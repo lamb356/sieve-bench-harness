@@ -2,7 +2,20 @@
 
 Production-grade benchmark harness for public multi-language code retrieval evaluation.
 
-Current status: Phase A implemented.
+Current status: Phase B implemented.
+
+Phase B scope
+- Python only on the same CoIR benchmark surface as Phase A
+- Five retrievers: ripgrep, BM25, CodeBERT, UniXcoder, SIEVE deterministic stub
+- Retrieval metrics: Recall@1/5/10, MRR@10, NDCG@10
+- Performance metrics: p50/p95/p99 latency, throughput, index build time
+- Full report outputs: JSON, markdown hero table, CSV audit data, optional HTML view
+- Normalized-code benchmark surface: all Phase B retrievers index `document.index_text`
+
+Phase B.5 planned follow-up
+- After Phase B is verified and pushed, run the same five retrievers on raw code with comments/docstrings preserved.
+- Output directory: `bench-results/phase-b.5-python-raw/`.
+- Phase B.5 is not part of the Phase B execution target.
 
 Phase A scope
 - Python only
@@ -53,6 +66,24 @@ Phase A quickcheck
 ```bash
 make bench-python-quickcheck
 ```
+
+Phase B full Python benchmark
+```bash
+make bench-python
+```
+
+Phase B outputs
+- `bench-results/phase-b-python-full/results.json`
+- `bench-results/phase-b-python-full/benchmark-table.md`
+- `bench-results/phase-b-python-full/benchmark-full.csv`
+- `bench-results/phase-b-python-full/interactive.html`
+
+CodeBERT / UniXcoder notes
+- Model downloads are cached under `bench/cache/models/`.
+- CodeBERT pin: `microsoft/codebert-base@3b0952feddeffad0063f274080e3c23d75e7eb39`.
+- UniXcoder pin: `microsoft/unixcoder-base@5604afdc964f6c53782a6813140ade5216b99006`.
+- Document truncation is head+tail balanced to the 512-token model limit; query truncation is head-only.
+- Embeddings are attention-mask mean-pooled and ranked with cosine similarity.
 
 Outputs
 - `bench-results/phase-a-python-quickcheck/results.json`

@@ -5,8 +5,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCH_RESULTS_DIR = REPO_ROOT / "bench-results"
 BENCH_CACHE_DIR = REPO_ROOT / "bench" / "cache"
+BENCH_MODEL_CACHE_DIR = BENCH_CACHE_DIR / "models"
 CORNSTACK_BLOOM_PATH = BENCH_CACHE_DIR / "cornstack_bloom.bin"
 PHASE_A_RESULTS_DIR = BENCH_RESULTS_DIR / "phase-a-python-quickcheck"
+PHASE_B_RESULTS_DIR = BENCH_RESULTS_DIR / "phase-b-python-full"
 
 GLOBAL_RANDOM_SEED = 1337
 QUICKCHECK_SAMPLE_SIZE = 100
@@ -14,6 +16,12 @@ QUICKCHECK_TOP_K = 5
 QUICKCHECK_OUTPUT_JSON = PHASE_A_RESULTS_DIR / "results.json"
 QUICKCHECK_OUTPUT_MD = PHASE_A_RESULTS_DIR / "hero-table.md"
 RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "coir-python-quickcheck"
+PHASE_B_RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "coir-python-full"
+
+CODEBERT_MODEL_ID = "microsoft/codebert-base"
+CODEBERT_MODEL_REVISION = "3b0952feddeffad0063f274080e3c23d75e7eb39"
+UNIXCODER_MODEL_ID = "microsoft/unixcoder-base"
+UNIXCODER_MODEL_REVISION = "5604afdc964f6c53782a6813140ade5216b99006"
 
 COIR_SOURCE_NAME = "coir"
 COIR_DATASET_ID = "CoIR-Retrieval/CodeSearchNet"

@@ -1,3 +1,5 @@
+import math
+
 from bench.metrics.retrieval import aggregate_retrieval_metrics, compute_query_metrics
 from bench.retrievers.base import SearchResult
 
@@ -16,6 +18,20 @@ def test_compute_query_metrics_known_answer_fixture() -> None:
     assert metrics["recall@10"] == 1.0
     assert round(metrics["mrr@10"], 6) == round(1.0 / 3.0, 6)
     assert round(metrics["ndcg@10"], 6) == round(1.0 / 2.0, 6)
+
+
+def test_compute_query_metrics_mrr_and_ndcg_at_ten_boundaries() -> None:
+    results = [SearchResult(document_id=f"doc-{index}", path=f"doc-{index}.py", score=float(20 - index), code="") for index in range(1, 12)]
+
+    rank_ten = compute_query_metrics(ground_truth_document_id="doc-10", results=results, ks=(1, 5, 10))
+    missing = compute_query_metrics(ground_truth_document_id="doc-missing", results=results, ks=(1, 5, 10))
+
+    assert rank_ten["recall@10"] == 1.0
+    assert rank_ten["mrr@10"] == 0.1
+    assert rank_ten["ndcg@10"] == 1.0 / math.log2(11)
+    assert missing["recall@10"] == 0.0
+    assert missing["mrr@10"] == 0.0
+    assert missing["ndcg@10"] == 0.0
 
 
 def test_aggregate_retrieval_metrics_averages_rows() -> None:

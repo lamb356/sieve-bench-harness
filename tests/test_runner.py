@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from bench.contamination.bloom import BloomFilter
-from bench.runners.run_benchmark import run_phase_a_quickcheck
+from bench.runners.run_benchmark import run_phase_a_quickcheck, run_phase_b_python_full
 
 
 def test_phase_a_quickcheck_requires_contamination_filter(tmp_path: Path) -> None:
@@ -21,3 +21,10 @@ def test_phase_a_quickcheck_rejects_bloom_without_canary(tmp_path: Path) -> None
 
     with pytest.raises(ValueError, match="canary"):
         run_phase_a_quickcheck(bloom_path=bloom_path, sample_size=1, top_k=5, output_dir=tmp_path / "out")
+
+
+def test_phase_b_python_full_requires_contamination_filter_before_retrievers(tmp_path: Path) -> None:
+    missing_path = tmp_path / "missing.bin"
+
+    with pytest.raises(FileNotFoundError, match="Contamination checks are mandatory"):
+        run_phase_b_python_full(bloom_path=missing_path, sample_size=1, top_k=10, output_dir=tmp_path / "out")
