@@ -1,0 +1,21 @@
+PYTHON ?= python
+PIP ?= $(PYTHON) -m pip
+
+.PHONY: bootstrap test fixture-bloom bench-python-quickcheck bench-all clean
+
+bootstrap:
+	$(PIP) install -e '.[dev]'
+
+fixture-bloom:
+	PYTHONPATH=. $(PYTHON) -c "from bench.constants import BLOOM_CANARY_CODE, CORNSTACK_BLOOM_PATH; from bench.contamination.bloom import build_fixture_bloom; build_fixture_bloom(CORNSTACK_BLOOM_PATH, language='python', code_samples=[BLOOM_CANARY_CODE], expected_items=10000); print(f'fixture bloom ready at {CORNSTACK_BLOOM_PATH}')"
+
+test:
+	PYTHONPATH=. $(PYTHON) -m pytest -q
+
+bench-python-quickcheck: fixture-bloom
+	PYTHONPATH=. $(PYTHON) -m bench.runners.run_benchmark --bloom-path bench/cache/cornstack_bloom.bin --sample-size 100 --top-k 5 --output-dir bench-results/phase-a-python-quickcheck
+
+bench-all: bench-python-quickcheck
+
+clean:
+	rm -rf .pytest_cache bench-results bench/cache

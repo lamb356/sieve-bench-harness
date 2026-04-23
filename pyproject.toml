@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sieve-bench-harness"
+version = "0.1.0"
+description = "Production-grade benchmark harness for public multi-language code retrieval evaluation."
+readme = "README.md"
+requires-python = "==3.11.*"
+license = { text = "MIT" }
+authors = [
+  { name = "Carson + Hermes", email = "noreply@example.com" },
+]
+dependencies = [
+  "datasets==4.8.4",
+  "huggingface-hub==0.35.3",
+  "pyarrow==21.0.0",
+  "numpy==2.3.3",
+  "bitarray==3.7.2",
+  "tree-sitter==0.25.2",
+  "tree-sitter-language-pack==0.10.0",
+  "typer==0.17.4",
+  "jinja2==3.1.6",
+  "orjson==3.11.3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.4.2",
+  "pytest-cov==7.0.0",
+]
+
+[project.scripts]
+sieve-bench = "bench.runners.run_benchmark:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["bench"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-ra"
