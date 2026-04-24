@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import gc
+import multiprocessing as mp
+import os
+import queue
 import time
+import traceback
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +22,7 @@ from bench.constants import (
     PHASE_A_RESULTS_DIR,
     PHASE_B_RESULTS_DIR,
     PHASE_B_V2_RESULTS_DIR,
+    PHASE_B_V3_RESULTS_DIR,
     PHASE_B_RIPGREP_INDEX_DIR,
     QUICKCHECK_OUTPUT_JSON,
     QUICKCHECK_OUTPUT_MD,
@@ -28,7 +34,7 @@ from bench.constants import (
 from bench.contamination.bloom import BloomFilter, assert_canary_membership, normalized_code_hash
 from bench.loaders.base import CodeDocument, EvalExample, LoadedBenchmark
 from bench.loaders.coir import CoIRPythonLoader
-from bench.metrics.performance import measure_cpu_peak_rss, measure_torch_cuda_peak_allocated, summarize_performance
+from bench.metrics.performance import measure_cpu_retriever_delta_rss, measure_torch_cuda_peak_allocated, summarize_performance
 from bench.metrics.retrieval import aggregate_retrieval_metrics, compute_query_metrics
 from bench.report.generate_report import write_hero_table, write_phase_b_reports, write_results_json
 from bench.retrievers import RETRIEVER_REPORT_METADATA
@@ -148,15 +154,29 @@ def run_phase_a_quickcheck(*, bloom_path: Path, sample_size: int, top_k: int, ou
     return payload
 
 
-def _phase_b_retriever_factories() -> list[Callable[[], Any]]:
+@dataclass(frozen=True)
+class PhaseBRetrieverFactory:
+    retriever_name: str
+    factory: Callable[[], Any]
+    run_in_subprocess: bool = False
+
+    def __call__(self) -> Any:
+        return self.factory()
+
+
+def _build_phase_b_ripgrep() -> RipgrepRetriever:
+    return RipgrepRetriever(index_root=PHASE_B_RIPGREP_INDEX_DIR)
+
+
+def _phase_b_retriever_factories() -> list[PhaseBRetrieverFactory]:
     return [
-        lambda: RipgrepRetriever(index_root=PHASE_B_RIPGREP_INDEX_DIR),
-        BM25Retriever,
-        SieveStubRetriever,
-        CodeBERTRetriever,
-        UniXcoderRetriever,
-        LateOnCodeEdgeRetriever,
-        LateOnCodeRetriever,
+        PhaseBRetrieverFactory("ripgrep", _build_phase_b_ripgrep, run_in_subprocess=True),
+        PhaseBRetrieverFactory("bm25", BM25Retriever, run_in_subprocess=True),
+        PhaseBRetrieverFactory("sieve-stub", SieveStubRetriever, run_in_subprocess=True),
+        PhaseBRetrieverFactory("codebert", CodeBERTRetriever),
+        PhaseBRetrieverFactory("unixcoder", UniXcoderRetriever),
+        PhaseBRetrieverFactory("lateon-code-edge", LateOnCodeEdgeRetriever),
+        PhaseBRetrieverFactory("lateon-code", LateOnCodeRetriever),
     ]
 
 
@@ -195,13 +215,6 @@ def _retriever_uses_cuda(retriever: Any) -> tuple[bool, str | None]:
     return device.startswith("cuda"), device or None
 
 
-def _measure_retriever_phase(retriever: Any, fn: Any) -> tuple[Any, Any]:
-    uses_cuda, device = _retriever_uses_cuda(retriever)
-    if uses_cuda:
-        return measure_torch_cuda_peak_allocated(fn, device=device)
-    return measure_cpu_peak_rss(fn)
-
-
 def _run_retriever(
     *,
     retriever: Any,
@@ -209,15 +222,18 @@ def _run_retriever(
     accepted_examples: list[tuple[EvalExample, str]],
     top_k: int,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    index_started = time.perf_counter()
-    _, index_memory = _measure_retriever_phase(retriever, lambda: retriever.index(corpus))
-    index_build_seconds = time.perf_counter() - index_started
-
     rows: list[dict[str, Any]] = []
     metric_rows: list[dict[str, float]] = []
     search_latencies_ms: list[float] = []
     total_search_seconds = 0.0
+    index_build_seconds = 0.0
     search_k = max(top_k, max(RECALL_KS), MRR_K, NDCG_K)
+
+    def _index() -> None:
+        nonlocal index_build_seconds
+        index_started = time.perf_counter()
+        retriever.index(corpus)
+        index_build_seconds = time.perf_counter() - index_started
 
     def _search_all() -> None:
         nonlocal total_search_seconds
@@ -255,17 +271,36 @@ def _run_retriever(
                 }
             )
 
-    _, search_memory = _measure_retriever_phase(retriever, _search_all)
+    uses_cuda, device = _retriever_uses_cuda(retriever)
+    if uses_cuda:
+        _, index_memory = measure_torch_cuda_peak_allocated(_index, device=device)
+        _, search_memory = measure_torch_cuda_peak_allocated(_search_all, device=device)
+        memory_mb = max(index_memory.peak_mb, search_memory.peak_mb)
+        index_memory_mb = index_memory.peak_mb
+        search_memory_mb = search_memory.peak_mb
+        memory_measurement = {
+            "index": index_memory.to_json(),
+            "search": search_memory.to_json(),
+        }
+    else:
+        _, memory_measurements = measure_cpu_retriever_delta_rss(_index, _search_all)
+        index_memory = memory_measurements["index"]
+        search_memory = memory_measurements["search"]
+        total_memory = memory_measurements["total"]
+        memory_mb = total_memory.delta_mb
+        index_memory_mb = index_memory.delta_mb
+        search_memory_mb = search_memory.delta_mb
+        memory_measurement = {name: measurement.to_json() for name, measurement in memory_measurements.items()}
+
     aggregate = aggregate_retrieval_metrics(metric_rows)
-    memory_mb = max(index_memory.peak_mb, search_memory.peak_mb)
     performance = summarize_performance(
         latencies_ms=search_latencies_ms,
         query_count=len(accepted_examples),
         total_search_seconds=total_search_seconds,
         index_build_seconds=index_build_seconds,
         memory_mb=memory_mb,
-        index_memory_mb=index_memory.peak_mb,
-        search_memory_mb=search_memory.peak_mb,
+        index_memory_mb=index_memory_mb,
+        search_memory_mb=search_memory_mb,
     )
     summary = {
         "retriever": retriever.name,
@@ -274,14 +309,80 @@ def _run_retriever(
         **_retriever_report_metadata(retriever.name),
         **aggregate,
         **performance,
-        "memory_measurement": {
-            "index": index_memory.to_json(),
-            "search": search_memory.to_json(),
-        },
+        "memory_measurement": memory_measurement,
     }
     if hasattr(retriever, "embedding_metadata"):
         summary["embedding"] = retriever.embedding_metadata()
     return summary, rows
+
+
+def _run_cpu_retriever_child(
+    result_queue: Any,
+    retriever_factory: Callable[[], Any],
+    corpus: tuple[CodeDocument, ...],
+    accepted_examples: list[tuple[EvalExample, str]],
+    top_k: int,
+) -> None:
+    try:
+        retriever = retriever_factory()
+        summary, rows = _run_retriever(retriever=retriever, corpus=corpus, accepted_examples=accepted_examples, top_k=top_k)
+        summary.setdefault("memory_measurement", {})["process"] = {"mode": "subprocess", "pid": os.getpid()}
+        result_queue.put({"ok": True, "summary": summary, "rows": rows})
+    except BaseException:  # pragma: no cover - parent re-raises the child traceback
+        result_queue.put({"ok": False, "traceback": traceback.format_exc()})
+
+
+def _multiprocessing_context() -> mp.context.BaseContext:
+    if "spawn" in mp.get_all_start_methods():
+        return mp.get_context("spawn")
+    return mp.get_context()
+
+
+def _run_cpu_retriever_in_subprocess(
+    *,
+    retriever_factory: Callable[[], Any],
+    corpus: tuple[CodeDocument, ...],
+    accepted_examples: list[tuple[EvalExample, str]],
+    top_k: int,
+    timeout_seconds: float = 600.0,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    context = _multiprocessing_context()
+    result_queue = context.Queue()
+    process = context.Process(
+        target=_run_cpu_retriever_child,
+        args=(result_queue, retriever_factory, corpus, accepted_examples, top_k),
+    )
+    process.start()
+    message: dict[str, Any] | None = None
+    deadline = time.monotonic() + timeout_seconds
+    try:
+        while message is None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0.0:
+                process.terminate()
+                process.join(timeout=5.0)
+                raise TimeoutError(f"CPU retriever subprocess exceeded {timeout_seconds:.1f}s timeout")
+            try:
+                message = result_queue.get(timeout=min(1.0, remaining))
+            except queue.Empty:
+                if not process.is_alive():
+                    process.join(timeout=0.0)
+                    if process.exitcode not in (0, None):
+                        raise RuntimeError(f"CPU retriever subprocess exited with code {process.exitcode} before returning a result")
+                    raise RuntimeError("CPU retriever subprocess exited without returning a result")
+    finally:
+        result_queue.close()
+
+    process.join(timeout=timeout_seconds)
+    if process.is_alive():
+        process.terminate()
+        process.join(timeout=5.0)
+        raise TimeoutError(f"CPU retriever subprocess did not exit after returning a result within {timeout_seconds:.1f}s")
+    if process.exitcode not in (0, None):
+        raise RuntimeError(f"CPU retriever subprocess exited with code {process.exitcode}")
+    if not message.get("ok"):
+        raise RuntimeError("CPU retriever subprocess failed:\n" + str(message.get("traceback", "<missing traceback>")))
+    return message["summary"], message["rows"]
 
 
 def _phase_b_findings_and_gates(retriever_summaries: list[dict[str, Any]], *, corpus_document_count: int) -> tuple[list[str], dict[str, Any]]:
@@ -354,24 +455,32 @@ def run_phase_b_python_full(*, bloom_path: Path, sample_size: int, top_k: int, o
     retriever_summaries: list[dict[str, Any]] = []
     rows: list[dict[str, Any]] = []
     for retriever_factory in _phase_b_retriever_factories():
-        retriever = retriever_factory()
-        summary, retriever_rows = _run_retriever(
-            retriever=retriever,
-            corpus=loaded.corpus,
-            accepted_examples=accepted_examples,
-            top_k=top_k,
-        )
+        if retriever_factory.run_in_subprocess:
+            summary, retriever_rows = _run_cpu_retriever_in_subprocess(
+                retriever_factory=retriever_factory,
+                corpus=loaded.corpus,
+                accepted_examples=accepted_examples,
+                top_k=top_k,
+            )
+        else:
+            retriever = retriever_factory()
+            summary, retriever_rows = _run_retriever(
+                retriever=retriever,
+                corpus=loaded.corpus,
+                accepted_examples=accepted_examples,
+                top_k=top_k,
+            )
+            del retriever
+            gc.collect()
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except ImportError:  # pragma: no cover - torch is a project dependency
+                pass
         retriever_summaries.append(summary)
         rows.extend(retriever_rows)
-        del retriever
-        gc.collect()
-        try:
-            import torch
-
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except ImportError:  # pragma: no cover - torch is a project dependency
-            pass
 
     contamination_rejection_rate = len(rejected_examples) / float(len(loaded.examples))
     findings, gates = _phase_b_findings_and_gates(retriever_summaries, corpus_document_count=len(loaded.corpus))
@@ -399,7 +508,7 @@ def run_phase_b_python_full(*, bloom_path: Path, sample_size: int, top_k: int, o
             for example, ground_truth_hash in rejected_examples
         ],
         "benchmark": {
-            "phase": "B-v2",
+            "phase": "B-v3",
             "sample_size": sample_size,
             "top_k": top_k,
             "bloom_path": str(bloom_path),
@@ -436,7 +545,7 @@ def phase_b_python_full(
     bloom_path: Path = typer.Option(CORNSTACK_BLOOM_PATH, exists=False, dir_okay=False),
     sample_size: int = typer.Option(QUICKCHECK_SAMPLE_SIZE, min=1),
     top_k: int = typer.Option(max(RECALL_KS), min=1),
-    output_dir: Path = typer.Option(PHASE_B_V2_RESULTS_DIR, file_okay=False),
+    output_dir: Path = typer.Option(PHASE_B_V3_RESULTS_DIR, file_okay=False),
 ) -> None:
     payload = run_phase_b_python_full(
         bloom_path=bloom_path,
@@ -446,7 +555,7 @@ def phase_b_python_full(
     )
     by_name = {summary["retriever"]: summary for summary in payload["retriever_summaries"]}
     typer.echo(
-        "Phase B v2 Python full benchmark complete: "
+        "Phase B v3 Python full benchmark complete: "
         f"BM25 recall@5={by_name['bm25']['recall@5']:.3f} "
         f"UniXcoder recall@5={by_name['unixcoder']['recall@5']:.3f} "
         f"LateOn-Code-edge recall@5={by_name['lateon-code-edge']['recall@5']:.3f} "

@@ -61,7 +61,8 @@ def test_phase_b_report_writes_hero_and_extended_tables_json_csv_and_findings(tm
     assert "| BM25 | Classical IR baseline | — | 0.100 | 0.500 | 0.550 | 0.200 | 0.250 | 3.00 ms | 9.00 ms | 20.00 q/s | 64.00 MB |" in table
     assert "| LateOn-Code-edge | Size-matched retrieval-trained (primary) | 17M |" in table
     assert "## Extended Table: Reference Baselines" in table
-    assert "| CodeBERT (pretrained features only) | NULL BASELINE: off-the-shelf encoder without retrieval fine-tuning | 125M | 0.010 | 0.200 | 3.00 ms | 64.00 MB |" in table
+    assert "| Retriever | Role | Params | Recall@1 | Recall@5 | Recall@10 | MRR@10 | NDCG@10 | p50 latency | p95 latency | Throughput | Memory |" in table
+    assert "| CodeBERT (pretrained features only) | NULL BASELINE: off-the-shelf encoder without retrieval fine-tuning | 125M | 0.100 | 0.010 | 0.060 | 0.200 | 0.250 | 3.00 ms | 9.00 ms | 20.00 q/s | 64.00 MB |" in table
     assert "| LateOn-Code | SOTA reference at 10x scale; not a fair comparison with SIEVE's 4.2M param class | 149M |" in table
     assert "LateOn's multi-vector MaxSim brute-force scoring is inherently slower than single-vector cosine" in table
     assert "## Findings" in table
@@ -74,3 +75,58 @@ def test_phase_b_report_writes_hero_and_extended_tables_json_csv_and_findings(tm
         rows = list(csv.DictReader(handle))
     assert rows[0]["retriever"] == "ripgrep"
     assert rows[1]["retriever"] == "bm25"
+
+
+def test_diagnostic_warning_fires_on_near_identical_memory_values(tmp_path) -> None:
+    payload = {
+        "summary": {
+            "source": "coir",
+            "language": "python",
+            "query_count": 2,
+            "corpus_document_count": 2,
+            "contamination_rejected_count": 0,
+            "findings": [],
+        },
+        "retriever_summaries": [
+            _summary("ripgrep", 0.50, display_name="ripgrep"),
+            _summary("bm25", 0.75, display_name="BM25"),
+        ],
+        "rows": [],
+    }
+
+    write_phase_b_reports(payload, output_dir=tmp_path)
+
+    table = (tmp_path / "benchmark-table.md").read_text(encoding="utf-8")
+    assert "possible memory measurement bug: retriever ripgrep=64.00 MB and BM25=64.00 MB report nearly-identical memory" in table
+
+
+def test_diagnostic_warning_fires_on_all_zero_cpu_subprocess_delta_memory(tmp_path) -> None:
+    def zero_cpu_row(retriever: str, display_name: str) -> dict[str, object]:
+        row = _summary(retriever, 0.50, display_name=display_name)
+        row["memory_mb"] = 0.0
+        row["memory_measurement"] = {
+            "process": {"mode": "subprocess", "pid": 123},
+            "total": {"backend": "cpu-rss-delta", "baseline_mb": 100.0, "peak_mb": 100.0, "delta_mb": 0.0},
+        }
+        return row
+
+    payload = {
+        "summary": {
+            "source": "coir",
+            "language": "python",
+            "query_count": 2,
+            "corpus_document_count": 2,
+            "contamination_rejected_count": 0,
+            "findings": [],
+        },
+        "retriever_summaries": [
+            zero_cpu_row("ripgrep", "ripgrep"),
+            zero_cpu_row("bm25", "BM25"),
+        ],
+        "rows": [],
+    }
+
+    write_phase_b_reports(payload, output_dir=tmp_path)
+
+    table = (tmp_path / "benchmark-table.md").read_text(encoding="utf-8")
+    assert "CPU subprocess retrievers ripgrep, BM25 report 0.00 MB delta RSS" in table

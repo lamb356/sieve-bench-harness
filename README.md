@@ -12,28 +12,30 @@ The extended table exists for reference only. CodeBERT is a NULL BASELINE: base 
 
 Benchmark quality claims rely on the hero table, not cherry-picked rows from the extended table. The Role column exists to make each row's purpose explicit for reviewers.
 
-LateOn-Code-edge and LateOn-Code are evaluated in Phase B v2 with brute-force multi-vector MaxSim over the Phase B corpus. This is intentionally simple and auditable at this corpus size, but it is much slower than single-vector cosine; production LateOn deployments would use PLAID/FastPLAID indexing, which is not benchmarked here.
+LateOn-Code-edge and LateOn-Code are evaluated in Phase B v3 with brute-force multi-vector MaxSim over the Phase B corpus. This is intentionally simple and auditable at this corpus size, but it is much slower than single-vector cosine; production LateOn deployments would use PLAID/FastPLAID indexing, which is not benchmarked here.
 
-Diagnostic tooling used to validate retriever implementations lives under `bench/diagnostics/`. The `retriever_health.py` diagnostic was used to inspect CodeBERT/UniXcoder tokenization and caught the UniXcoder missing-`<encoder-only>` formatting bug that Phase B v2 fixes.
+Diagnostic tooling used to validate retriever implementations lives under `bench/diagnostics/`. The `retriever_health.py` diagnostic was used to inspect CodeBERT/UniXcoder tokenization and caught the UniXcoder missing-`<encoder-only>` formatting bug that Phase B v2 fixes. Phase B v3 keeps the v2 retriever quality surface intact while fixing per-retriever CPU memory reporting with isolated subprocess delta-RSS measurement.
 
 Production-grade benchmark harness for public multi-language code retrieval evaluation.
 
-Current status: Phase B v2 implemented.
+Current status: Phase B v3 implemented.
 
-Phase B v2 scope
-- Python only on the same CoIR benchmark surface as Phase A/B v1
+Phase B v3 scope
+- Python only on the same CoIR benchmark surface as Phase A/B v1/v2
 - Seven retrievers: ripgrep, BM25, CodeBERT null baseline, UniXcoder with `<encoder-only>` formatting, LateOn-Code-edge, LateOn-Code, SIEVE deterministic stub
 - Retrieval metrics: Recall@1/5/10, MRR@10, NDCG@10
-- Performance metrics: p50/p95/p99 latency, throughput, index build time, peak memory footprint
+- Performance metrics: p50/p95/p99 latency, throughput, index build time, per-retriever memory footprint
+- CPU memory is reported as isolated subprocess delta RSS; CUDA retrievers keep `torch.cuda.max_memory_allocated()` measurement
 - Full report outputs: JSON, markdown hero + extended tables, CSV audit data, optional HTML view
-- Normalized-code benchmark surface: all Phase B v2 retrievers index `document.index_text`
+- Normalized-code benchmark surface: all Phase B v3 retrievers index `document.index_text`
 
-Phase B v1 audit trail
+Phase B v1/v2/v3 audit trail
 - Phase B v1 artifacts remain at `bench-results/phase-b-python-full/` when present locally.
-- Phase B v2 writes new artifacts to `bench-results/phase-b-v2-python-full/` and does not overwrite v1.
+- Phase B v2 artifacts remain at `bench-results/phase-b-v2-python-full/` and are not overwritten by v3.
+- Phase B v3 writes new artifacts to `bench-results/phase-b-v3-python-full/`.
 
 Phase B.5 planned follow-up
-- After Phase B v2 is verified and pushed, define the raw-surface retriever set and run it on raw code with comments/docstrings preserved.
+- After Phase B v3 is verified and pushed, define the raw-surface retriever set and run it on raw code with comments/docstrings preserved.
 - Output directory: `bench-results/phase-b.5-python-raw/`.
 - Phase B.5 is not part of the Phase B execution target.
 
@@ -87,25 +89,25 @@ Phase A quickcheck
 make bench-python-quickcheck
 ```
 
-Phase B v2 full Python benchmark
+Phase B v3 full Python benchmark
 ```bash
 make bench-python
 ```
 
-Phase B v2 outputs
-- `bench-results/phase-b-v2-python-full/results.json`
-- `bench-results/phase-b-v2-python-full/benchmark-table.md`
-- `bench-results/phase-b-v2-python-full/benchmark-full.csv`
-- `bench-results/phase-b-v2-python-full/interactive.html`
+Phase B v3 outputs
+- `bench-results/phase-b-v3-python-full/results.json`
+- `bench-results/phase-b-v3-python-full/benchmark-table.md`
+- `bench-results/phase-b-v3-python-full/benchmark-full.csv`
+- `bench-results/phase-b-v3-python-full/interactive.html`
 
 Retriever notes
 - Model downloads are cached under `bench/cache/models/`.
 - CodeBERT pin: `microsoft/codebert-base@3b0952feddeffad0063f274080e3c23d75e7eb39`; this is a null baseline using base pretrained features only.
-- UniXcoder pin: `microsoft/unixcoder-base@5604afdc964f6c53782a6813140ade5216b99006`; Phase B v2 wraps both query and document inputs with `<encoder-only>`.
+- UniXcoder pin: `microsoft/unixcoder-base@5604afdc964f6c53782a6813140ade5216b99006`; Phase B v3 keeps the Phase B v2 `<encoder-only>` query/document wrapper.
 - LateOn-Code-edge pin: `lightonai/LateOn-Code-edge@07ef20f406c86badca122464808f4cac2f6e4b25`.
 - LateOn-Code pin: `lightonai/LateOn-Code@734b659a57935ef50562d79581c3ff1f8d825c93`.
 - CodeBERT and UniXcoder use 512-token max context, document head+tail truncation, query head-only truncation, mean pooling, and cosine similarity.
-- LateOn retrievers use PyLate multi-vector embeddings and brute-force MaxSim scoring in Phase B v2.
+- LateOn retrievers use PyLate multi-vector embeddings and brute-force MaxSim scoring in Phase B v3.
 
 Outputs
 - `bench-results/phase-a-python-quickcheck/results.json`

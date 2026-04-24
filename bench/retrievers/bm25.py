@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import re
 import time
+from collections import Counter, defaultdict
 from collections.abc import Sequence
 
-from rank_bm25 import BM25Okapi
+import numpy as np
 
 from bench.contamination.normalize import normalize_for_search
 from bench.loaders.base import CodeDocument
@@ -14,7 +15,7 @@ from bench.retrievers.base import SearchResult
 _IDENTIFIER_BOUNDARY_1 = re.compile(r"([A-Z]+)([A-Z][a-z])")
 _IDENTIFIER_BOUNDARY_2 = re.compile(r"([a-z0-9])([A-Z])")
 _ALPHA_NUM_BOUNDARY = re.compile(r"([A-Za-z])([0-9])|([0-9])([A-Za-z])")
-_TOKEN_RE = re.compile(r"[A-Za-z]+|[0-9]+")
+_TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
 
 
 def tokenize_text(text: str) -> list[str]:
@@ -39,20 +40,66 @@ class BM25Retriever:
 
     def __init__(self) -> None:
         self._documents: tuple[CodeDocument, ...] = ()
-        self._tokenized_corpus: list[list[str]] = []
-        self._index: BM25Okapi | None = None
+        self._postings: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        self._idf: dict[str, float] = {}
+        self._doc_lengths = np.array([], dtype=np.float32)
+        self._length_norm = np.array([], dtype=np.float32)
+        self._avgdl = 0.0
+        self._k1 = 1.5
+        self._b = 0.75
+        self._epsilon = 0.25
         self._latency_samples_ms: list[float] = []
 
     def index(self, corpus: Sequence[CodeDocument]) -> None:
         self._documents = tuple(corpus)
         if not self._documents:
             raise ValueError("BM25Retriever requires a non-empty corpus")
-        self._tokenized_corpus = [tokenize_text(_document_text(document)) for document in self._documents]
-        self._index = BM25Okapi(self._tokenized_corpus)
+
+        postings: dict[str, list[tuple[int, int]]] = defaultdict(list)
+        document_frequencies: dict[str, int] = defaultdict(int)
+        doc_lengths: list[int] = []
+        for document_index, document in enumerate(self._documents):
+            token_counts = Counter(tokenize_text(_document_text(document)))
+            doc_lengths.append(sum(token_counts.values()))
+            for term, frequency in token_counts.items():
+                document_frequencies[term] += 1
+                postings[term].append((document_index, frequency))
+
+        self._doc_lengths = np.asarray(doc_lengths, dtype=np.float32)
+        self._avgdl = float(self._doc_lengths.mean()) if len(self._doc_lengths) else 0.0
+        if self._avgdl > 0.0:
+            self._length_norm = self._k1 * (1.0 - self._b + self._b * self._doc_lengths / self._avgdl)
+        else:
+            self._length_norm = np.zeros(len(self._documents), dtype=np.float32)
+
+        corpus_size = len(self._documents)
+        raw_idf: dict[str, float] = {}
+        negative_terms: list[str] = []
+        idf_sum = 0.0
+        for term, containing_documents in document_frequencies.items():
+            # Match rank_bm25.BM25Okapi's ATIRE-style idf exactly, including its
+            # epsilon floor for terms that appear in more than half the corpus.
+            idf = float(np.log(corpus_size - containing_documents + 0.5) - np.log(containing_documents + 0.5))
+            raw_idf[term] = idf
+            idf_sum += idf
+            if idf < 0.0:
+                negative_terms.append(term)
+        average_idf = idf_sum / len(raw_idf) if raw_idf else 0.0
+        epsilon_idf = self._epsilon * average_idf
+        for term in negative_terms:
+            raw_idf[term] = epsilon_idf
+        self._idf = raw_idf
+        self._postings = {
+            term: (
+                np.asarray([document_index for document_index, _frequency in entries], dtype=np.int32),
+                np.asarray([frequency for _document_index, frequency in entries], dtype=np.float32),
+            )
+            for term, entries in postings.items()
+        }
         self._latency_samples_ms.clear()
 
     def search(self, query: str, k: int) -> list[SearchResult]:
-        if self._index is None:
+        if not self._documents:
             raise RuntimeError("BM25Retriever.search() called before index()")
         if k <= 0:
             return []
@@ -62,12 +109,20 @@ class BM25Retriever:
             return []
 
         started = time.perf_counter()
-        scores = self._index.get_scores(query_tokens)
+        scores = np.zeros(len(self._documents), dtype=np.float32)
+        if self._avgdl > 0.0:
+            for query_token in query_tokens:
+                postings = self._postings.get(query_token)
+                if postings is None:
+                    continue
+                document_indices, term_frequencies = postings
+                denominator = term_frequencies + self._length_norm[document_indices]
+                scores[document_indices] += self._idf.get(query_token, 0.0) * (term_frequencies * (self._k1 + 1.0) / denominator)
         elapsed_ms = (time.perf_counter() - started) * 1000.0
         self._latency_samples_ms.append(elapsed_ms)
 
         ranked = sorted(
-            ((index, float(score)) for index, score in enumerate(scores) if float(score) > 0.0),
+            ((int(index), float(scores[index])) for index in np.flatnonzero(scores > 0.0)),
             key=lambda item: (-item[1], self._documents[item[0]].document_id),
         )[:k]
         return [
@@ -76,7 +131,7 @@ class BM25Retriever:
                 path=self._documents[index].path,
                 score=score,
                 code=self._documents[index].code,
-                metadata={"token_count": len(self._tokenized_corpus[index])},
+                metadata={"token_count": int(self._doc_lengths[index])},
             )
             for index, score in ranked
         ]

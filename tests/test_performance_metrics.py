@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from bench.metrics.performance import measure_cpu_peak_rss, measure_torch_cuda_peak_allocated, summarize_performance
+from bench.metrics.performance import (
+    current_cpu_rss_mebibytes,
+    measure_cpu_peak_rss,
+    measure_cpu_retriever_delta_rss,
+    measure_torch_cuda_peak_allocated,
+    ru_maxrss_to_mebibytes,
+    summarize_performance,
+)
 
 
 def test_performance_metrics_compute_nearest_rank_percentiles_and_throughput() -> None:
@@ -62,6 +69,47 @@ def test_cpu_memory_measurement_converts_known_linux_rss_fixture() -> None:
     assert measurement.delta_mb == 2.0
 
 
+def test_platform_detection_correctly_converts_ru_maxrss_units() -> None:
+    assert ru_maxrss_to_mebibytes(2048, platform="linux") == 2.0
+    assert ru_maxrss_to_mebibytes(2048, platform="linux2") == 2.0
+    assert ru_maxrss_to_mebibytes(3 * 1024 * 1024, platform="darwin") == 3.0
+
+
+def test_current_cpu_rss_reads_linux_vmrss_instead_of_high_water(tmp_path) -> None:
+    status = tmp_path / "status"
+    status.write_text("Name:\tpython\nVmPeak:\t999999 kB\nVmRSS:\t20480 kB\n", encoding="utf-8")
+
+    rss = current_cpu_rss_mebibytes(
+        status_path=status,
+        getrusage_fn=lambda _who: _FakeUsage(ru_maxrss=999_999 * 1024),
+    )
+
+    assert rss == 20.0
+
+
+def test_cpu_memory_measurement_uses_delta_not_absolute() -> None:
+    rss_values = iter([1_000.0, 1_050.0, 1_075.0])
+    calls: list[str] = []
+
+    def index() -> None:
+        calls.append("index")
+
+    def search() -> str:
+        calls.append("search")
+        return "searched"
+
+    result, measurements = measure_cpu_retriever_delta_rss(index, search, current_rss_fn=lambda: next(rss_values))
+
+    assert result == "searched"
+    assert calls == ["index", "search"]
+    assert measurements["index"].baseline_mb == 1_000.0
+    assert measurements["index"].peak_mb == 1_050.0
+    assert measurements["index"].delta_mb == 50.0
+    assert measurements["total"].baseline_mb == 1_000.0
+    assert measurements["total"].peak_mb == 1_075.0
+    assert measurements["total"].delta_mb == 75.0
+
+
 class _FakeCuda:
     def __init__(self) -> None:
         self.reset_called = False
@@ -94,3 +142,12 @@ def test_cuda_memory_measurement_converts_known_allocated_bytes() -> None:
     assert measurement.delta_mb == 4.0
     assert _FakeTorch.cuda.reset_called
     assert _FakeTorch.cuda.synchronize_calls == 2
+
+
+def test_gpu_memory_measurement_unchanged_for_cuda_retrievers() -> None:
+    result, measurement = measure_torch_cuda_peak_allocated(lambda: "cuda-ok", torch_module=_FakeTorch(), device="cuda:0")
+
+    assert result == "cuda-ok"
+    assert measurement.backend == "cuda-max-memory-allocated"
+    assert measurement.peak_mb == 5.0
+    assert measurement.delta_mb == 4.0

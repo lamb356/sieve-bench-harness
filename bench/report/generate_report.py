@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import html
 import json
+from itertools import combinations
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +60,80 @@ def _format_memory(value: Any) -> str:
     return f"{float(value):.2f} MB"
 
 
+def _phase_label(payload: dict[str, Any]) -> str:
+    phase = str(payload.get("benchmark", {}).get("phase", "B-v2"))
+    if phase == "B":
+        return "Phase B"
+    if phase.startswith("B-"):
+        return "Phase " + phase.replace("-", " ", 1)
+    return f"Phase {phase}"
+
+
+def _is_cpu_subprocess_memory_row(row: dict[str, Any]) -> bool:
+    measurement = row.get("memory_measurement")
+    if not isinstance(measurement, dict):
+        return False
+    process = measurement.get("process")
+    if not isinstance(process, dict) or process.get("mode") != "subprocess":
+        return False
+    total = measurement.get("total")
+    return isinstance(total, dict) and str(total.get("backend", "")).startswith("cpu-")
+
+
+def _memory_diagnostic_warnings(payload: dict[str, Any]) -> list[str]:
+    rows = payload.get("retriever_summaries", [])
+    warnings: list[str] = []
+    zero_cpu_rows = [
+        row
+        for row in rows
+        if _is_cpu_subprocess_memory_row(row) and float(row.get("memory_mb", 0.0)) == 0.0
+    ]
+    if len(zero_cpu_rows) >= 2:
+        names = ", ".join(_metadata_for(row).display_name for row in zero_cpu_rows)
+        warnings.append(
+            "possible memory measurement bug: "
+            f"CPU subprocess retrievers {names} report 0.00 MB delta RSS; verify current-RSS baselines are not hiding retriever allocations"
+        )
+    for left, right in combinations(rows, 2):
+        if "memory_mb" not in left or "memory_mb" not in right:
+            continue
+        left_memory = float(left["memory_mb"])
+        right_memory = float(right["memory_mb"])
+        if left_memory < 1.0 or right_memory < 1.0:
+            continue
+        if abs(left_memory - right_memory) < 1.0:
+            left_name = _metadata_for(left).display_name
+            right_name = _metadata_for(right).display_name
+            warnings.append(
+                "possible memory measurement bug: "
+                f"retriever {left_name}={left_memory:.2f} MB and {right_name}={right_memory:.2f} MB report nearly-identical memory"
+            )
+    return warnings
+
+
+def _append_metric_row(lines: list[str], row: dict[str, Any], metadata: RetrieverReportMetadata) -> None:
+    lines.append(
+        "| "
+        + " | ".join(
+            [
+                metadata.display_name,
+                metadata.role_label,
+                metadata.params,
+                _format_metric(row["recall@1"]),
+                _format_metric(row["recall@5"]),
+                _format_metric(row["recall@10"]),
+                _format_metric(row["mrr@10"]),
+                _format_metric(row["ndcg@10"]),
+                _format_latency(row["p50"]),
+                _format_latency(row["p95"]),
+                _format_throughput(row["throughput_qps"]),
+                _format_memory(row.get("memory_mb", 0.0)),
+            ]
+        )
+        + " |"
+    )
+
+
 def _fallback_metadata(row: dict[str, Any]) -> RetrieverReportMetadata:
     return RetrieverReportMetadata(
         table=str(row.get("table", "hero")),  # type: ignore[arg-type]
@@ -86,8 +161,9 @@ def _rows_for_table(payload: dict[str, Any], table: str) -> list[tuple[dict[str,
 
 def render_phase_b_hero_table(payload: dict[str, Any]) -> str:
     summary = payload["summary"]
+    phase_label = _phase_label(payload)
     lines = [
-        f"# Phase B v2 Python benchmark — {summary['source']} / {summary['language']}",
+        f"# {phase_label} Python benchmark — {summary['source']} / {summary['language']}",
         "",
         f"Queries: {summary['query_count']}  ",
         f"Corpus documents: {summary['corpus_document_count']}  ",
@@ -101,56 +177,28 @@ def render_phase_b_hero_table(payload: dict[str, Any]) -> str:
         "|---|---|---:|---|---|---|---|---|---|---|---|---|",
     ]
     for row, metadata in _rows_for_table(payload, "hero"):
-        lines.append(
-            "| "
-            + " | ".join(
-                [
-                    metadata.display_name,
-                    metadata.role_label,
-                    metadata.params,
-                    _format_metric(row["recall@1"]),
-                    _format_metric(row["recall@5"]),
-                    _format_metric(row["recall@10"]),
-                    _format_metric(row["mrr@10"]),
-                    _format_metric(row["ndcg@10"]),
-                    _format_latency(row["p50"]),
-                    _format_latency(row["p95"]),
-                    _format_throughput(row["throughput_qps"]),
-                    _format_memory(row.get("memory_mb", 0.0)),
-                ]
-            )
-            + " |"
-        )
+        _append_metric_row(lines, row, metadata)
 
     lines.extend(
         [
             "",
             "Quality claims for SIEVE should be read from the hero table. The extended rows below are reference points only, not apples-to-apples competitors against SIEVE's 4.2M-parameter deployment class.",
             "",
-            "Note: LateOn's multi-vector MaxSim brute-force scoring is inherently slower than single-vector cosine; production deployment would use PLAID indexing, which is intentionally not benchmarked in Phase B v2.",
+            "Note: LateOn's multi-vector MaxSim brute-force scoring is inherently slower than single-vector cosine; production deployment would use PLAID indexing, which is intentionally not benchmarked in Phase B v3.",
             "",
             "## Extended Table: Reference Baselines",
             "",
-            "| Retriever | Role | Params | Recall@5 | MRR@10 | p50 latency | Memory |",
-            "|---|---|---:|---|---|---|---|",
+            "| Retriever | Role | Params | Recall@1 | Recall@5 | Recall@10 | MRR@10 | NDCG@10 | p50 latency | p95 latency | Throughput | Memory |",
+            "|---|---|---:|---|---|---|---|---|---|---|---|---|",
         ]
     )
     for row, metadata in _rows_for_table(payload, "extended"):
-        lines.append(
-            "| "
-            + " | ".join(
-                [
-                    metadata.display_name,
-                    metadata.role_label,
-                    metadata.params,
-                    _format_metric(row["recall@5"]),
-                    _format_metric(row["mrr@10"]),
-                    _format_latency(row["p50"]),
-                    _format_memory(row.get("memory_mb", 0.0)),
-                ]
-            )
-            + " |"
-        )
+        _append_metric_row(lines, row, metadata)
+
+    diagnostic_warnings = _memory_diagnostic_warnings(payload)
+    if diagnostic_warnings:
+        lines.extend(["", "## Diagnostics", ""])
+        lines.extend(f"- {warning}" for warning in diagnostic_warnings)
 
     findings = summary.get("findings") or []
     if findings:
@@ -164,11 +212,11 @@ def render_phase_b_hero_table(payload: dict[str, Any]) -> str:
             "",
             "## Notes",
             "",
-            "- Phase B v2 uses normalized `document.index_text` for all retrievers to keep the benchmark surface aligned with Phase B v1.",
+            f"- {phase_label} uses normalized `document.index_text` for all retrievers to keep the benchmark surface aligned with Phase B v1.",
             "- CodeBERT is an explicit null baseline: base pretrained features without retrieval fine-tuning, routed to the extended table.",
             "- UniXcoder uses the required `<encoder-only>` token wrapper before mean pooling and cosine ranking.",
             "- LateOn-Code-edge and LateOn-Code use pinned public Hugging Face revisions with PyLate ColBERT-style multi-vector embeddings and brute-force MaxSim scoring for this phase.",
-            "- CPU-only rows report Linux/WSL process RSS high-water via `resource.getrusage`; detailed baseline/delta measurements are preserved in `results.json`.",
+            "- CPU-only rows report retriever marginal delta RSS from isolated subprocesses; `results.json` includes baseline, index, search, total, and subprocess PID details.",
             "- The SIEVE row is a deterministic query-hash-seeded random stub, not the real SIEVE integration.",
         ]
     )
@@ -195,20 +243,21 @@ def write_benchmark_csv(rows: list[dict[str, Any]], *, output_path: Path) -> Non
 
 def write_interactive_html(payload: dict[str, Any], *, output_path: Path) -> None:
     table = render_phase_b_hero_table(payload)
+    phase_label = _phase_label(payload)
     escaped_json = html.escape(json.dumps(payload, indent=2, sort_keys=True))
     escaped_table = html.escape(table)
     html_body = f"""<!doctype html>
 <html lang=\"en\">
 <head>
   <meta charset=\"utf-8\">
-  <title>Phase B v2 Python benchmark</title>
+  <title>{phase_label} Python benchmark</title>
   <style>
     body {{ font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.45; }}
     pre {{ background: #111827; color: #f9fafb; padding: 1rem; overflow-x: auto; border-radius: 0.5rem; }}
   </style>
 </head>
 <body>
-  <h1>Phase B v2 Python benchmark</h1>
+  <h1>{phase_label} Python benchmark</h1>
   <h2>Markdown table</h2>
   <pre>{escaped_table}</pre>
   <h2>Raw JSON</h2>

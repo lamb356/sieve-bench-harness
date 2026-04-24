@@ -1,9 +1,19 @@
+import os
 from pathlib import Path
 
 import pytest
 
 from bench.contamination.bloom import BloomFilter
-from bench.runners.run_benchmark import _phase_b_findings_and_gates, _phase_b_retriever_factories, run_phase_a_quickcheck, run_phase_b_python_full
+from bench.loaders.base import CodeDocument, EvalExample
+from bench.retrievers.base import SearchResult
+from bench.runners.run_benchmark import (
+    _multiprocessing_context,
+    _phase_b_findings_and_gates,
+    _phase_b_retriever_factories,
+    _run_cpu_retriever_in_subprocess,
+    run_phase_a_quickcheck,
+    run_phase_b_python_full,
+)
 
 
 def test_phase_a_quickcheck_requires_contamination_filter(tmp_path: Path) -> None:
@@ -34,9 +44,70 @@ def test_phase_b_retriever_factories_are_lazy_and_keep_cpu_rows_before_neural_mo
     factories = _phase_b_retriever_factories()
 
     assert all(callable(factory) for factory in factories)
-    assert [getattr(factory, "__name__", "") for factory in factories[1:4]] == ["BM25Retriever", "SieveStubRetriever", "CodeBERTRetriever"]
-    assert getattr(factories[0], "__name__", "") == "<lambda>"
+    assert [factory.retriever_name for factory in factories[:3]] == ["ripgrep", "bm25", "sieve-stub"]
+    assert [factory.retriever_name for factory in factories[3:]] == ["codebert", "unixcoder", "lateon-code-edge", "lateon-code"]
+    assert all(factory.run_in_subprocess for factory in factories[:3])
+    assert not any(factory.run_in_subprocess for factory in factories[3:])
     assert not any(hasattr(factory, "_documents") for factory in factories)
+
+
+class _PidRecordingRetriever:
+    name = "pid-recorder"
+    display_name = "PID Recorder"
+
+    def __init__(self) -> None:
+        self._documents: tuple[CodeDocument, ...] = ()
+
+    def index(self, corpus: tuple[CodeDocument, ...]) -> None:
+        self._documents = tuple(corpus)
+
+    def search(self, query: str, k: int) -> list[SearchResult]:
+        del query, k
+        document = self._documents[0]
+        return [
+            SearchResult(
+                document_id=document.document_id,
+                path=document.path,
+                code=document.code,
+                score=1.0,
+                metadata={"pid": os.getpid()},
+            )
+        ]
+
+
+def _pid_recording_retriever_factory() -> _PidRecordingRetriever:
+    return _PidRecordingRetriever()
+
+
+def test_cpu_memory_measurement_subprocess_isolation() -> None:
+    document = CodeDocument(document_id="doc-1", path="doc_1.py", code="def answer(): return 1", language="python", index_text="answer return")
+    example = EvalExample(
+        query="answer",
+        ground_truth_code=document.code,
+        ground_truth_path=document.path,
+        language="python",
+        source="unit",
+        corpus_id="unit-corpus",
+        metadata={"query_id": "q1", "ground_truth_document_id": document.document_id},
+    )
+
+    summary, rows = _run_cpu_retriever_in_subprocess(
+        retriever_factory=_pid_recording_retriever_factory,
+        corpus=(document,),
+        accepted_examples=[(example, "hash")],
+        top_k=1,
+    )
+
+    assert summary["retriever"] == "pid-recorder"
+    assert rows[0]["retriever"] == "pid-recorder"
+    assert rows[0]["top_k_result_document_ids"] == ["doc-1"]
+    assert summary["memory_mb"] >= 0.0
+    assert summary["memory_measurement"]["process"]["mode"] == "subprocess"
+    assert summary["memory_measurement"]["process"]["pid"] != os.getpid()
+
+
+def test_cpu_memory_measurement_subprocess_uses_spawn_for_clean_rss_baseline() -> None:
+    assert _multiprocessing_context().get_start_method() == "spawn"
 
 
 def _retriever_summary(name: str, recall5: float, recall10: float | None = None) -> dict[str, float | str]:
