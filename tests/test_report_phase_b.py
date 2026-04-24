@@ -6,7 +6,29 @@ import json
 from bench.report.generate_report import write_phase_b_reports
 
 
-def test_phase_b_report_writes_hero_table_json_csv_and_findings(tmp_path) -> None:
+def _summary(retriever: str, recall5: float, *, display_name: str | None = None, table: str | None = None) -> dict[str, object]:
+    row = {
+        "retriever": retriever,
+        "display_name": display_name or retriever,
+        "recall@1": 0.1,
+        "recall@5": recall5,
+        "recall@10": min(1.0, recall5 + 0.05),
+        "mrr@10": 0.2,
+        "ndcg@10": 0.25,
+        "p50": 3.0,
+        "p95": 9.0,
+        "throughput_qps": 20.0,
+        "memory_mb": 64.0,
+        "index_memory_mb": 32.0,
+        "search_memory_mb": 64.0,
+        "index_build_seconds": 0.1,
+    }
+    if table is not None:
+        row["table"] = table
+    return row
+
+
+def test_phase_b_report_writes_hero_and_extended_tables_json_csv_and_findings(tmp_path) -> None:
     payload = {
         "summary": {
             "source": "coir",
@@ -14,35 +36,16 @@ def test_phase_b_report_writes_hero_table_json_csv_and_findings(tmp_path) -> Non
             "query_count": 100,
             "corpus_document_count": 100,
             "contamination_rejected_count": 0,
-            "findings": ["CodeBERT Recall@5 did not exceed BM25 on normalized code."],
+            "findings": ["CodeBERT null baseline stayed near zero as expected."],
         },
         "retriever_summaries": [
-            {
-                "retriever": "ripgrep",
-                "display_name": "ripgrep",
-                "recall@1": 0.1,
-                "recall@5": 0.33,
-                "recall@10": 0.4,
-                "mrr@10": 0.2,
-                "ndcg@10": 0.25,
-                "p50": 3.0,
-                "p95": 9.0,
-                "throughput_qps": 20.0,
-                "index_build_seconds": 0.1,
-            },
-            {
-                "retriever": "bm25",
-                "display_name": "BM25",
-                "recall@1": 0.2,
-                "recall@5": 0.5,
-                "recall@10": 0.55,
-                "mrr@10": 0.3,
-                "ndcg@10": 0.35,
-                "p50": 1.0,
-                "p95": 2.0,
-                "throughput_qps": 50.0,
-                "index_build_seconds": 0.2,
-            },
+            _summary("ripgrep", 0.33, display_name="ripgrep"),
+            _summary("bm25", 0.50, display_name="BM25"),
+            _summary("codebert", 0.01, display_name="CodeBERT"),
+            _summary("unixcoder", 0.65, display_name="UniXcoder"),
+            _summary("lateon-code-edge", 0.75, display_name="LateOn-Code-edge"),
+            _summary("lateon-code", 0.85, display_name="LateOn-Code"),
+            _summary("sieve-stub", 0.02, display_name="SIEVE (stub)"),
         ],
         "rows": [
             {"retriever": "ripgrep", "query_id": "q1", "recall@5": 1.0, "mrr@10": 1.0, "ndcg@10": 1.0},
@@ -53,10 +56,16 @@ def test_phase_b_report_writes_hero_table_json_csv_and_findings(tmp_path) -> Non
     write_phase_b_reports(payload, output_dir=tmp_path)
 
     table = (tmp_path / "benchmark-table.md").read_text(encoding="utf-8")
-    assert "| Retriever | Recall@1 | Recall@5 | Recall@10 | MRR@10 | NDCG@10 | p50 latency | p95 latency | Throughput |" in table
-    assert "| BM25 | 0.200 | 0.500 | 0.550 | 0.300 | 0.350 | 1.00 ms | 2.00 ms | 50.00 q/s |" in table
+    assert "## Hero Table: Size-Matched Competitors" in table
+    assert "| Retriever | Role | Params | Recall@1 | Recall@5 | Recall@10 | MRR@10 | NDCG@10 | p50 latency | p95 latency | Throughput | Memory |" in table
+    assert "| BM25 | Classical IR baseline | — | 0.100 | 0.500 | 0.550 | 0.200 | 0.250 | 3.00 ms | 9.00 ms | 20.00 q/s | 64.00 MB |" in table
+    assert "| LateOn-Code-edge | Size-matched retrieval-trained (primary) | 17M |" in table
+    assert "## Extended Table: Reference Baselines" in table
+    assert "| CodeBERT (pretrained features only) | NULL BASELINE: off-the-shelf encoder without retrieval fine-tuning | 125M | 0.010 | 0.200 | 3.00 ms | 64.00 MB |" in table
+    assert "| LateOn-Code | SOTA reference at 10x scale; not a fair comparison with SIEVE's 4.2M param class | 149M |" in table
+    assert "LateOn's multi-vector MaxSim brute-force scoring is inherently slower than single-vector cosine" in table
     assert "## Findings" in table
-    assert "CodeBERT Recall@5" in table
+    assert "CodeBERT null baseline" in table
 
     raw = json.loads((tmp_path / "results.json").read_text(encoding="utf-8"))
     assert raw["summary"]["language"] == "python"

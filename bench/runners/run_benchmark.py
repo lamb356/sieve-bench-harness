@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import gc
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +16,7 @@ from bench.constants import (
     NDCG_K,
     PHASE_A_RESULTS_DIR,
     PHASE_B_RESULTS_DIR,
+    PHASE_B_V2_RESULTS_DIR,
     PHASE_B_RIPGREP_INDEX_DIR,
     QUICKCHECK_OUTPUT_JSON,
     QUICKCHECK_OUTPUT_MD,
@@ -25,11 +28,14 @@ from bench.constants import (
 from bench.contamination.bloom import BloomFilter, assert_canary_membership, normalized_code_hash
 from bench.loaders.base import CodeDocument, EvalExample, LoadedBenchmark
 from bench.loaders.coir import CoIRPythonLoader
-from bench.metrics.performance import summarize_performance
+from bench.metrics.performance import measure_cpu_peak_rss, measure_torch_cuda_peak_allocated, summarize_performance
 from bench.metrics.retrieval import aggregate_retrieval_metrics, compute_query_metrics
 from bench.report.generate_report import write_hero_table, write_phase_b_reports, write_results_json
+from bench.retrievers import RETRIEVER_REPORT_METADATA
 from bench.retrievers.bm25 import BM25Retriever
 from bench.retrievers.codebert import CodeBERTRetriever
+from bench.retrievers.lateon_code import LateOnCodeRetriever
+from bench.retrievers.lateon_code_edge import LateOnCodeEdgeRetriever
 from bench.retrievers.ripgrep import RipgrepRetriever
 from bench.retrievers.sieve import SieveStubRetriever
 from bench.retrievers.unixcoder import UniXcoderRetriever
@@ -142,18 +148,58 @@ def run_phase_a_quickcheck(*, bloom_path: Path, sample_size: int, top_k: int, ou
     return payload
 
 
-def _phase_b_retrievers() -> list[Any]:
+def _phase_b_retriever_factories() -> list[Callable[[], Any]]:
     return [
-        RipgrepRetriever(index_root=PHASE_B_RIPGREP_INDEX_DIR),
-        BM25Retriever(),
-        CodeBERTRetriever(),
-        UniXcoderRetriever(),
-        SieveStubRetriever(),
+        lambda: RipgrepRetriever(index_root=PHASE_B_RIPGREP_INDEX_DIR),
+        BM25Retriever,
+        SieveStubRetriever,
+        CodeBERTRetriever,
+        UniXcoderRetriever,
+        LateOnCodeEdgeRetriever,
+        LateOnCodeRetriever,
     ]
 
 
+def _phase_b_retrievers() -> list[Any]:
+    return [factory() for factory in _phase_b_retriever_factories()]
+
+
+def _retriever_report_metadata(retriever_name: str) -> dict[str, Any]:
+    metadata = RETRIEVER_REPORT_METADATA.get(retriever_name)
+    if metadata is None:
+        return {}
+    return {
+        "table": metadata.table,
+        "role": metadata.role,
+        "role_label": metadata.role_label,
+        "params": metadata.params,
+        "display_name": metadata.display_name,
+        "order": metadata.order,
+    }
+
+
 def _retriever_display_name(retriever: Any) -> str:
+    metadata = RETRIEVER_REPORT_METADATA.get(str(getattr(retriever, "name", "")))
+    if metadata is not None:
+        return metadata.display_name
     return str(getattr(retriever, "display_name", getattr(retriever, "name", retriever.__class__.__name__)))
+
+
+def _retriever_uses_cuda(retriever: Any) -> tuple[bool, str | None]:
+    if not hasattr(retriever, "embedding_metadata"):
+        return False, None
+    try:
+        device = str(retriever.embedding_metadata().get("device", ""))
+    except Exception:  # pragma: no cover - defensive metadata fallback
+        return False, None
+    return device.startswith("cuda"), device or None
+
+
+def _measure_retriever_phase(retriever: Any, fn: Any) -> tuple[Any, Any]:
+    uses_cuda, device = _retriever_uses_cuda(retriever)
+    if uses_cuda:
+        return measure_torch_cuda_peak_allocated(fn, device=device)
+    return measure_cpu_peak_rss(fn)
 
 
 def _run_retriever(
@@ -164,7 +210,7 @@ def _run_retriever(
     top_k: int,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     index_started = time.perf_counter()
-    retriever.index(corpus)
+    _, index_memory = _measure_retriever_phase(retriever, lambda: retriever.index(corpus))
     index_build_seconds = time.perf_counter() - index_started
 
     rows: list[dict[str, Any]] = []
@@ -172,53 +218,66 @@ def _run_retriever(
     search_latencies_ms: list[float] = []
     total_search_seconds = 0.0
     search_k = max(top_k, max(RECALL_KS), MRR_K, NDCG_K)
-    for example, ground_truth_hash in accepted_examples:
-        search_started = time.perf_counter()
-        results = retriever.search(example.query, k=search_k)
-        elapsed_seconds = time.perf_counter() - search_started
-        total_search_seconds += elapsed_seconds
-        search_latencies_ms.append(elapsed_seconds * 1000.0)
-        metrics = compute_query_metrics(
-            ground_truth_document_id=str(example.metadata["ground_truth_document_id"]),
-            results=results,
-            ks=RECALL_KS,
-            mrr_k=MRR_K,
-            ndcg_k=NDCG_K,
-        )
-        metric_rows.append(metrics)
-        rows.append(
-            {
-                "query_id": str(example.metadata["query_id"]),
-                "source": example.source,
-                "language": example.language,
-                "retriever": retriever.name,
-                "display_name": _retriever_display_name(retriever),
-                "query": example.query,
-                "ground_truth_path": example.ground_truth_path,
-                "ground_truth_hash": ground_truth_hash,
-                "ground_truth_document_id": str(example.metadata["ground_truth_document_id"]),
-                "top_k_result_hashes": [normalized_code_hash(result.code, language=example.language) for result in results[:top_k]],
-                "top_k_result_document_ids": [result.document_id for result in results[:top_k]],
-                "top_k_result_paths": [result.path for result in results[:top_k]],
-                "top_k_result_scores": [result.score for result in results[:top_k]],
-                "retrieved_code_samples": [result.code for result in results[:top_k]],
-                **metrics,
-            }
-        )
 
+    def _search_all() -> None:
+        nonlocal total_search_seconds
+        for example, ground_truth_hash in accepted_examples:
+            search_started = time.perf_counter()
+            results = retriever.search(example.query, k=search_k)
+            elapsed_seconds = time.perf_counter() - search_started
+            total_search_seconds += elapsed_seconds
+            search_latencies_ms.append(elapsed_seconds * 1000.0)
+            metrics = compute_query_metrics(
+                ground_truth_document_id=str(example.metadata["ground_truth_document_id"]),
+                results=results,
+                ks=RECALL_KS,
+                mrr_k=MRR_K,
+                ndcg_k=NDCG_K,
+            )
+            metric_rows.append(metrics)
+            rows.append(
+                {
+                    "query_id": str(example.metadata["query_id"]),
+                    "source": example.source,
+                    "language": example.language,
+                    "retriever": retriever.name,
+                    "display_name": _retriever_display_name(retriever),
+                    "query": example.query,
+                    "ground_truth_path": example.ground_truth_path,
+                    "ground_truth_hash": ground_truth_hash,
+                    "ground_truth_document_id": str(example.metadata["ground_truth_document_id"]),
+                    "top_k_result_hashes": [normalized_code_hash(result.code, language=example.language) for result in results[:top_k]],
+                    "top_k_result_document_ids": [result.document_id for result in results[:top_k]],
+                    "top_k_result_paths": [result.path for result in results[:top_k]],
+                    "top_k_result_scores": [result.score for result in results[:top_k]],
+                    "retrieved_code_samples": [result.code for result in results[:top_k]],
+                    **metrics,
+                }
+            )
+
+    _, search_memory = _measure_retriever_phase(retriever, _search_all)
     aggregate = aggregate_retrieval_metrics(metric_rows)
+    memory_mb = max(index_memory.peak_mb, search_memory.peak_mb)
     performance = summarize_performance(
         latencies_ms=search_latencies_ms,
         query_count=len(accepted_examples),
         total_search_seconds=total_search_seconds,
         index_build_seconds=index_build_seconds,
+        memory_mb=memory_mb,
+        index_memory_mb=index_memory.peak_mb,
+        search_memory_mb=search_memory.peak_mb,
     )
     summary = {
         "retriever": retriever.name,
         "display_name": _retriever_display_name(retriever),
         "query_count": len(accepted_examples),
+        **_retriever_report_metadata(retriever.name),
         **aggregate,
         **performance,
+        "memory_measurement": {
+            "index": index_memory.to_json(),
+            "search": search_memory.to_json(),
+        },
     }
     if hasattr(retriever, "embedding_metadata"):
         summary["embedding"] = retriever.embedding_metadata()
@@ -230,27 +289,44 @@ def _phase_b_findings_and_gates(retriever_summaries: list[dict[str, Any]], *, co
     findings: list[str] = []
     gates: dict[str, Any] = {}
 
-    ripgrep_recall = float(by_name["ripgrep"]["recall@5"])
     bm25_recall = float(by_name["bm25"]["recall@5"])
-    gates["bm25_beats_ripgrep_recall@5"] = {"passed": bm25_recall > ripgrep_recall, "ripgrep": ripgrep_recall, "bm25": bm25_recall}
-    if bm25_recall <= ripgrep_recall:
+    unixcoder_recall = float(by_name["unixcoder"]["recall@5"])
+    lateon_edge_recall = float(by_name["lateon-code-edge"]["recall@5"])
+    lateon_recall = float(by_name["lateon-code"]["recall@5"])
+    codebert_recall = float(by_name["codebert"]["recall@5"])
+
+    gates["unixcoder_beats_bm25_recall@5"] = {"passed": unixcoder_recall > bm25_recall, "unixcoder": unixcoder_recall, "bm25": bm25_recall}
+    if unixcoder_recall <= bm25_recall:
         raise RuntimeError(
-            f"BM25 sanity gate failed: BM25 Recall@5={bm25_recall:.3f} did not beat ripgrep Recall@5={ripgrep_recall:.3f}"
+            f"UniXcoder sanity gate failed: UniXcoder Recall@5={unixcoder_recall:.3f} did not beat BM25 Recall@5={bm25_recall:.3f}"
         )
 
-    for retriever_name, display_name in [("codebert", "CodeBERT"), ("unixcoder", "UniXcoder")]:
-        recall = float(by_name[retriever_name]["recall@5"])
-        passed = recall > bm25_recall
-        gates[f"{retriever_name}_beats_bm25_recall@5"] = {
-            "passed": passed,
-            "mode": "finding-not-blocking",
-            retriever_name: recall,
-            "bm25": bm25_recall,
-        }
-        if not passed:
-            findings.append(
-                f"{display_name} Recall@5 ({recall:.3f}) did not exceed BM25 Recall@5 ({bm25_recall:.3f}) on normalized code; recorded as an empirical finding per Phase B approval."
-            )
+    gates["lateon_code_edge_beats_unixcoder_recall@5"] = {
+        "passed": lateon_edge_recall > unixcoder_recall,
+        "lateon-code-edge": lateon_edge_recall,
+        "unixcoder": unixcoder_recall,
+    }
+    if lateon_edge_recall <= unixcoder_recall:
+        raise RuntimeError(
+            f"LateOn-Code-edge sanity gate failed: LateOn-Code-edge Recall@5={lateon_edge_recall:.3f} did not beat UniXcoder Recall@5={unixcoder_recall:.3f}"
+        )
+
+    gates["lateon_code_beats_lateon_code_edge_recall@5"] = {
+        "passed": lateon_recall > lateon_edge_recall,
+        "lateon-code": lateon_recall,
+        "lateon-code-edge": lateon_edge_recall,
+    }
+    if lateon_recall <= lateon_edge_recall:
+        raise RuntimeError(
+            f"LateOn-Code sanity gate failed: LateOn-Code Recall@5={lateon_recall:.3f} did not beat LateOn-Code-edge Recall@5={lateon_edge_recall:.3f}"
+        )
+
+    gates["codebert_null_baseline_recall@5_lt_0.05"] = {"passed": codebert_recall < 0.05, "codebert": codebert_recall, "max_allowed": 0.05}
+    if codebert_recall >= 0.05:
+        raise RuntimeError(
+            f"CodeBERT null-baseline sanity gate failed: CodeBERT Recall@5={codebert_recall:.3f} is unexpectedly above the <0.05 null-baseline threshold"
+        )
+    findings.append(f"CodeBERT null baseline stayed near zero as expected (Recall@5={codebert_recall:.3f}).")
 
     sieve = by_name["sieve-stub"]
     expected_recall10 = 10.0 / float(corpus_document_count)
@@ -277,7 +353,8 @@ def run_phase_b_python_full(*, bloom_path: Path, sample_size: int, top_k: int, o
 
     retriever_summaries: list[dict[str, Any]] = []
     rows: list[dict[str, Any]] = []
-    for retriever in _phase_b_retrievers():
+    for retriever_factory in _phase_b_retriever_factories():
+        retriever = retriever_factory()
         summary, retriever_rows = _run_retriever(
             retriever=retriever,
             corpus=loaded.corpus,
@@ -286,6 +363,15 @@ def run_phase_b_python_full(*, bloom_path: Path, sample_size: int, top_k: int, o
         )
         retriever_summaries.append(summary)
         rows.extend(retriever_rows)
+        del retriever
+        gc.collect()
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:  # pragma: no cover - torch is a project dependency
+            pass
 
     contamination_rejection_rate = len(rejected_examples) / float(len(loaded.examples))
     findings, gates = _phase_b_findings_and_gates(retriever_summaries, corpus_document_count=len(loaded.corpus))
@@ -313,7 +399,7 @@ def run_phase_b_python_full(*, bloom_path: Path, sample_size: int, top_k: int, o
             for example, ground_truth_hash in rejected_examples
         ],
         "benchmark": {
-            "phase": "B",
+            "phase": "B-v2",
             "sample_size": sample_size,
             "top_k": top_k,
             "bloom_path": str(bloom_path),
@@ -350,7 +436,7 @@ def phase_b_python_full(
     bloom_path: Path = typer.Option(CORNSTACK_BLOOM_PATH, exists=False, dir_okay=False),
     sample_size: int = typer.Option(QUICKCHECK_SAMPLE_SIZE, min=1),
     top_k: int = typer.Option(max(RECALL_KS), min=1),
-    output_dir: Path = typer.Option(PHASE_B_RESULTS_DIR, file_okay=False),
+    output_dir: Path = typer.Option(PHASE_B_V2_RESULTS_DIR, file_okay=False),
 ) -> None:
     payload = run_phase_b_python_full(
         bloom_path=bloom_path,
@@ -360,10 +446,12 @@ def phase_b_python_full(
     )
     by_name = {summary["retriever"]: summary for summary in payload["retriever_summaries"]}
     typer.echo(
-        "Phase B Python full benchmark complete: "
+        "Phase B v2 Python full benchmark complete: "
         f"BM25 recall@5={by_name['bm25']['recall@5']:.3f} "
-        f"CodeBERT recall@5={by_name['codebert']['recall@5']:.3f} "
-        f"UniXcoder recall@5={by_name['unixcoder']['recall@5']:.3f}"
+        f"UniXcoder recall@5={by_name['unixcoder']['recall@5']:.3f} "
+        f"LateOn-Code-edge recall@5={by_name['lateon-code-edge']['recall@5']:.3f} "
+        f"LateOn-Code recall@5={by_name['lateon-code']['recall@5']:.3f} "
+        f"CodeBERT-null recall@5={by_name['codebert']['recall@5']:.3f}"
     )
 
 

@@ -6,6 +6,8 @@ import numpy as np
 import pytest
 
 from bench.loaders.base import CodeDocument
+from bench.retrievers import RETRIEVER_REPORT_METADATA
+from bench.retrievers import codebert as codebert_module
 from bench.retrievers.codebert import CodeBERTRetriever
 from bench.retrievers.unixcoder import UniXcoderRetriever
 
@@ -79,3 +81,14 @@ def test_transformer_retrievers_expose_pinned_model_metadata(tmp_path) -> None:
     assert retriever.embedding_metadata()["model_id"] == "test/mock-code-encoder"
     assert retriever.embedding_metadata()["max_length"] == 512
     assert "truncation_strategy" in retriever.embedding_metadata()
+
+
+def test_codebert_is_annotated_as_null_baseline_for_extended_table() -> None:
+    metadata = RETRIEVER_REPORT_METADATA["codebert"]
+
+    assert metadata.role == "null_baseline"
+    assert metadata.table == "extended"
+    assert metadata.display_name == "CodeBERT (pretrained features only)"
+    assert "NULL BASELINE" in metadata.role_label
+    assert "NULL BASELINE" in (codebert_module.__doc__ or "")
+    assert "Do not cite this row as a CodeBERT-vs-SIEVE comparison" in (codebert_module.__doc__ or "")

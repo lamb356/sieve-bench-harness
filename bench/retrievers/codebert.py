@@ -1,3 +1,18 @@
+"""Null baseline: base CodeBERT features without retrieval fine-tuning.
+
+Base microsoft/codebert-base is a masked-language-modeling pretrained encoder.
+It was not trained for dense retrieval, and independent dual-encoder cosine
+scoring over its features is known to produce near-random retrieval quality.
+This retriever is included as a NULL BASELINE to illustrate the gap between
+off-the-shelf pretrained code encoders (which cannot be used directly for
+retrieval) and retrieval-trained code embedders (UniXcoder, LateOn-Code-edge,
+LateOn-Code). Expect Recall@k near 0 across all settings.
+
+Literature-comparable CodeBERT retrieval numbers come from fine-tuned pairwise
+classifier variants, not from base features as used here.
+Do not cite this row as a CodeBERT-vs-SIEVE comparison.
+"""
+
 from __future__ import annotations
 
 import math
