@@ -217,7 +217,7 @@ def render_phase_b_hero_table(payload: dict[str, Any]) -> str:
             "- UniXcoder uses the required `<encoder-only>` token wrapper before mean pooling and cosine ranking.",
             "- LateOn-Code-edge and LateOn-Code use pinned public Hugging Face revisions with PyLate ColBERT-style multi-vector embeddings and brute-force MaxSim scoring for this phase.",
             "- CPU-only rows report retriever marginal delta RSS from isolated subprocesses; `results.json` includes baseline, index, search, total, and subprocess PID details.",
-            "- The SIEVE row is a deterministic query-hash-seeded random stub, not the real SIEVE integration.",
+            "- The SIEVE row calls the real Rust engine via the existing `sieve index`/`sieve search --format json` CLI; Phase 1 weights should replace random/local ONNX exports before final quality claims.",
         ]
     )
     return "\n".join(lines) + "\n"

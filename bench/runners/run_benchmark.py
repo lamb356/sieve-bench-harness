@@ -43,7 +43,7 @@ from bench.retrievers.codebert import CodeBERTRetriever
 from bench.retrievers.lateon_code import LateOnCodeRetriever
 from bench.retrievers.lateon_code_edge import LateOnCodeEdgeRetriever
 from bench.retrievers.ripgrep import RipgrepRetriever
-from bench.retrievers.sieve import SieveStubRetriever
+from bench.retrievers.sieve import SieveRetriever
 from bench.retrievers.unixcoder import UniXcoderRetriever
 
 app = typer.Typer(help="Run the SIEVE public benchmark harness.")
@@ -172,7 +172,7 @@ def _phase_b_retriever_factories() -> list[PhaseBRetrieverFactory]:
     return [
         PhaseBRetrieverFactory("ripgrep", _build_phase_b_ripgrep, run_in_subprocess=True),
         PhaseBRetrieverFactory("bm25", BM25Retriever, run_in_subprocess=True),
-        PhaseBRetrieverFactory("sieve-stub", SieveStubRetriever, run_in_subprocess=True),
+        PhaseBRetrieverFactory("sieve", SieveRetriever, run_in_subprocess=True),
         PhaseBRetrieverFactory("codebert", CodeBERTRetriever),
         PhaseBRetrieverFactory("unixcoder", UniXcoderRetriever),
         PhaseBRetrieverFactory("lateon-code-edge", LateOnCodeEdgeRetriever),
@@ -386,6 +386,7 @@ def _run_cpu_retriever_in_subprocess(
 
 
 def _phase_b_findings_and_gates(retriever_summaries: list[dict[str, Any]], *, corpus_document_count: int) -> tuple[list[str], dict[str, Any]]:
+    del corpus_document_count  # Real SIEVE is no longer a random-baseline stub.
     by_name = {summary["retriever"]: summary for summary in retriever_summaries}
     findings: list[str] = []
     gates: dict[str, Any] = {}
@@ -429,20 +430,7 @@ def _phase_b_findings_and_gates(retriever_summaries: list[dict[str, Any]], *, co
         )
     findings.append(f"CodeBERT null baseline stayed near zero as expected (Recall@5={codebert_recall:.3f}).")
 
-    sieve = by_name["sieve-stub"]
-    expected_recall10 = 10.0 / float(corpus_document_count)
-    observed_recall10 = float(sieve["recall@10"])
-    max_allowed = max(0.05, expected_recall10 * 50.0)
-    gates["sieve_stub_random_baseline_recall@10"] = {
-        "passed": observed_recall10 <= max_allowed,
-        "observed": observed_recall10,
-        "expected": expected_recall10,
-        "max_allowed": max_allowed,
-    }
-    if observed_recall10 > max_allowed:
-        raise RuntimeError(
-            f"SIEVE stub sanity gate failed: Recall@10={observed_recall10:.3f} is too high for random baseline expected≈{expected_recall10:.6f}"
-        )
+    findings.append(f"SIEVE real engine row included with Recall@5={float(by_name['sieve']['recall@5']):.3f}; quality is expected to move after Phase 1 weights replace random/local ONNX exports.")
     return findings, gates
 
 

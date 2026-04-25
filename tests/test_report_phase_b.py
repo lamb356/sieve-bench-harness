@@ -45,7 +45,7 @@ def test_phase_b_report_writes_hero_and_extended_tables_json_csv_and_findings(tm
             _summary("unixcoder", 0.65, display_name="UniXcoder"),
             _summary("lateon-code-edge", 0.75, display_name="LateOn-Code-edge"),
             _summary("lateon-code", 0.85, display_name="LateOn-Code"),
-            _summary("sieve-stub", 0.02, display_name="SIEVE (stub)"),
+            _summary("sieve", 0.02, display_name="SIEVE"),
         ],
         "rows": [
             {"retriever": "ripgrep", "query_id": "q1", "recall@5": 1.0, "mrr@10": 1.0, "ndcg@10": 1.0},

@@ -49,12 +49,12 @@ RETRIEVER_REPORT_METADATA: dict[str, RetrieverReportMetadata] = {
         display_name="LateOn-Code-edge",
         order=40,
     ),
-    "sieve-stub": RetrieverReportMetadata(
+    "sieve": RetrieverReportMetadata(
         table="hero",
-        role="our_model_stub",
+        role="our_model",
         role_label="Our model",
         params="4.2M",
-        display_name="SIEVE (stub)",
+        display_name="SIEVE",
         order=50,
     ),
     "codebert": RetrieverReportMetadata(

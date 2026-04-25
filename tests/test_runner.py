@@ -44,7 +44,7 @@ def test_phase_b_retriever_factories_are_lazy_and_keep_cpu_rows_before_neural_mo
     factories = _phase_b_retriever_factories()
 
     assert all(callable(factory) for factory in factories)
-    assert [factory.retriever_name for factory in factories[:3]] == ["ripgrep", "bm25", "sieve-stub"]
+    assert [factory.retriever_name for factory in factories[:3]] == ["ripgrep", "bm25", "sieve"]
     assert [factory.retriever_name for factory in factories[3:]] == ["codebert", "unixcoder", "lateon-code-edge", "lateon-code"]
     assert all(factory.run_in_subprocess for factory in factories[:3])
     assert not any(factory.run_in_subprocess for factory in factories[3:])
@@ -127,12 +127,15 @@ def test_phase_b_v2_sanity_gates_require_retrieval_trained_ordering() -> None:
         _retriever_summary("unixcoder", 0.50),
         _retriever_summary("lateon-code-edge", 0.60),
         _retriever_summary("lateon-code", 0.70),
-        _retriever_summary("sieve-stub", 0.00, recall10=0.001),
+        _retriever_summary("sieve", 0.11, recall10=0.19),
     ]
 
     findings, gates = _phase_b_findings_and_gates(summaries, corpus_document_count=1000)
 
-    assert findings == ["CodeBERT null baseline stayed near zero as expected (Recall@5=0.010)."]
+    assert findings == [
+        "CodeBERT null baseline stayed near zero as expected (Recall@5=0.010).",
+        "SIEVE real engine row included with Recall@5=0.110; quality is expected to move after Phase 1 weights replace random/local ONNX exports.",
+    ]
     assert gates["unixcoder_beats_bm25_recall@5"]["passed"] is True
     assert gates["lateon_code_edge_beats_unixcoder_recall@5"]["passed"] is True
     assert gates["lateon_code_beats_lateon_code_edge_recall@5"]["passed"] is True
@@ -147,7 +150,7 @@ def test_phase_b_v2_sanity_gates_fail_closed_for_bad_lateon_ordering() -> None:
         _retriever_summary("unixcoder", 0.50),
         _retriever_summary("lateon-code-edge", 0.45),
         _retriever_summary("lateon-code", 0.70),
-        _retriever_summary("sieve-stub", 0.00, recall10=0.001),
+        _retriever_summary("sieve", 0.11, recall10=0.19),
     ]
 
     with pytest.raises(RuntimeError, match="LateOn-Code-edge sanity gate failed"):
