@@ -4,6 +4,7 @@ import gc
 import multiprocessing as mp
 import os
 import queue
+import signal
 import time
 import traceback
 from collections.abc import Callable
@@ -23,7 +24,11 @@ from bench.constants import (
     PHASE_B_RESULTS_DIR,
     PHASE_B_V2_RESULTS_DIR,
     PHASE_B_V3_RESULTS_DIR,
+    PHASE_B5_CPU_TIMEOUT_SECONDS,
+    PHASE_B5_RESULTS_DIR,
     PHASE_B_RIPGREP_INDEX_DIR,
+    PHASE_B5_RIPGREP_INDEX_DIR,
+    PYTHON_EVAL_FULL,
     QUICKCHECK_OUTPUT_JSON,
     QUICKCHECK_OUTPUT_MD,
     QUICKCHECK_SAMPLE_SIZE,
@@ -168,9 +173,25 @@ def _build_phase_b_ripgrep() -> RipgrepRetriever:
     return RipgrepRetriever(index_root=PHASE_B_RIPGREP_INDEX_DIR)
 
 
+def _build_phase_b5_ripgrep() -> RipgrepRetriever:
+    return RipgrepRetriever(index_root=PHASE_B5_RIPGREP_INDEX_DIR)
+
+
 def _phase_b_retriever_factories() -> list[PhaseBRetrieverFactory]:
     return [
         PhaseBRetrieverFactory("ripgrep", _build_phase_b_ripgrep, run_in_subprocess=True),
+        PhaseBRetrieverFactory("bm25", BM25Retriever, run_in_subprocess=True),
+        PhaseBRetrieverFactory("sieve", SieveRetriever, run_in_subprocess=True),
+        PhaseBRetrieverFactory("codebert", CodeBERTRetriever),
+        PhaseBRetrieverFactory("unixcoder", UniXcoderRetriever),
+        PhaseBRetrieverFactory("lateon-code-edge", LateOnCodeEdgeRetriever),
+        PhaseBRetrieverFactory("lateon-code", LateOnCodeRetriever),
+    ]
+
+
+def _phase_b5_retriever_factories() -> list[PhaseBRetrieverFactory]:
+    return [
+        PhaseBRetrieverFactory("ripgrep", _build_phase_b5_ripgrep, run_in_subprocess=True),
         PhaseBRetrieverFactory("bm25", BM25Retriever, run_in_subprocess=True),
         PhaseBRetrieverFactory("sieve", SieveRetriever, run_in_subprocess=True),
         PhaseBRetrieverFactory("codebert", CodeBERTRetriever),
@@ -324,6 +345,11 @@ def _run_cpu_retriever_child(
     top_k: int,
 ) -> None:
     try:
+        if hasattr(os, "setsid"):
+            try:
+                os.setsid()
+            except OSError:
+                pass
         retriever = retriever_factory()
         summary, rows = _run_retriever(retriever=retriever, corpus=corpus, accepted_examples=accepted_examples, top_k=top_k)
         summary.setdefault("memory_measurement", {})["process"] = {"mode": "subprocess", "pid": os.getpid()}
@@ -336,6 +362,30 @@ def _multiprocessing_context() -> mp.context.BaseContext:
     if "spawn" in mp.get_all_start_methods():
         return mp.get_context("spawn")
     return mp.get_context()
+
+
+def _terminate_cpu_retriever_process(process: mp.Process) -> None:
+    if process.pid is not None and hasattr(os, "killpg"):
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        except OSError:
+            process.terminate()
+    else:
+        process.terminate()
+    process.join(timeout=5.0)
+    if process.is_alive():
+        if process.pid is not None and hasattr(os, "killpg"):
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except OSError:
+                process.kill()
+        else:
+            process.kill()
+        process.join(timeout=5.0)
 
 
 def _run_cpu_retriever_in_subprocess(
@@ -359,8 +409,7 @@ def _run_cpu_retriever_in_subprocess(
         while message is None:
             remaining = deadline - time.monotonic()
             if remaining <= 0.0:
-                process.terminate()
-                process.join(timeout=5.0)
+                _terminate_cpu_retriever_process(process)
                 raise TimeoutError(f"CPU retriever subprocess exceeded {timeout_seconds:.1f}s timeout")
             try:
                 message = result_queue.get(timeout=min(1.0, remaining))
@@ -375,8 +424,7 @@ def _run_cpu_retriever_in_subprocess(
 
     process.join(timeout=timeout_seconds)
     if process.is_alive():
-        process.terminate()
-        process.join(timeout=5.0)
+        _terminate_cpu_retriever_process(process)
         raise TimeoutError(f"CPU retriever subprocess did not exit after returning a result within {timeout_seconds:.1f}s")
     if process.exitcode not in (0, None):
         raise RuntimeError(f"CPU retriever subprocess exited with code {process.exitcode}")
@@ -431,6 +479,48 @@ def _phase_b_findings_and_gates(retriever_summaries: list[dict[str, Any]], *, co
     findings.append(f"CodeBERT null baseline stayed near zero as expected (Recall@5={codebert_recall:.3f}).")
 
     findings.append(f"SIEVE real engine row included with Recall@5={float(by_name['sieve']['recall@5']):.3f}; quality is expected to move after Phase 1 weights replace random/local ONNX exports.")
+    return findings, gates
+
+
+def _phase_b5_findings_and_gates(retriever_summaries: list[dict[str, Any]]) -> tuple[list[str], dict[str, Any]]:
+    by_name = {summary["retriever"]: summary for summary in retriever_summaries}
+    findings: list[str] = []
+    gates: dict[str, Any] = {}
+
+    def _recall(name: str) -> float:
+        return float(by_name[name]["recall@5"])
+
+    def _record_comparison(key: str, left: str, right: str, *, relation: str) -> None:
+        left_recall = _recall(left)
+        right_recall = _recall(right)
+        passed = left_recall > right_recall if relation == ">" else left_recall < right_recall
+        gates[key] = {
+            "passed": passed,
+            left: left_recall,
+            right: right_recall,
+            "fatal": False,
+            "scope": "observational-full-eval",
+        }
+
+    _record_comparison("unixcoder_beats_bm25_recall@5", "unixcoder", "bm25", relation=">")
+    _record_comparison("lateon_code_edge_beats_unixcoder_recall@5", "lateon-code-edge", "unixcoder", relation=">")
+    _record_comparison("lateon_code_beats_lateon_code_edge_recall@5", "lateon-code", "lateon-code-edge", relation=">")
+
+    codebert_recall = _recall("codebert")
+    gates["codebert_null_baseline_recall@5_lt_0.05"] = {
+        "passed": codebert_recall < 0.05,
+        "codebert": codebert_recall,
+        "max_allowed": 0.05,
+        "fatal": False,
+        "scope": "observational-full-eval",
+    }
+    if codebert_recall < 0.05:
+        findings.append(f"CodeBERT null baseline stayed near zero on full eval (Recall@5={codebert_recall:.3f}).")
+    else:
+        findings.append(f"CodeBERT null baseline exceeded the Phase B semantic-hard guardrail on full eval (Recall@5={codebert_recall:.3f}); recorded as observational, not fatal.")
+    findings.append(
+        f"SIEVE row included with Recall@5={_recall('sieve'):.3f}; B.5 records full-eval/raw-surface behavior without applying Phase B semantic-hard ordering gates."
+    )
     return findings, gates
 
 
@@ -510,6 +600,92 @@ def run_phase_b_python_full(*, bloom_path: Path, sample_size: int, top_k: int, o
     return payload
 
 
+def run_phase_b5_python_full(
+    *,
+    bloom_path: Path,
+    sample_size: int | None,
+    top_k: int,
+    output_dir: Path,
+    cpu_timeout_seconds: float = PHASE_B5_CPU_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
+    bloom = _require_bloom_filter(bloom_path)
+    loader = CoIRPythonLoader()
+    loaded = loader.load_full_eval(sample_size=sample_size)
+    accepted_examples, rejected_examples = _accepted_examples(loaded=loaded, bloom=bloom)
+
+    retriever_summaries: list[dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
+    for retriever_factory in _phase_b5_retriever_factories():
+        if retriever_factory.run_in_subprocess:
+            summary, retriever_rows = _run_cpu_retriever_in_subprocess(
+                retriever_factory=retriever_factory,
+                corpus=loaded.corpus,
+                accepted_examples=accepted_examples,
+                top_k=top_k,
+                timeout_seconds=cpu_timeout_seconds,
+            )
+        else:
+            retriever = retriever_factory()
+            summary, retriever_rows = _run_retriever(
+                retriever=retriever,
+                corpus=loaded.corpus,
+                accepted_examples=accepted_examples,
+                top_k=top_k,
+            )
+            del retriever
+            gc.collect()
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except ImportError:  # pragma: no cover - torch is a project dependency
+                pass
+        retriever_summaries.append(summary)
+        rows.extend(retriever_rows)
+
+    contamination_rejection_rate = len(rejected_examples) / float(len(loaded.examples))
+    findings, gates = _phase_b5_findings_and_gates(retriever_summaries)
+    payload = {
+        "summary": {
+            "source": loaded.source,
+            "language": loaded.language,
+            "query_count": len(accepted_examples),
+            "corpus_document_count": len(loaded.corpus),
+            "contamination_rejected_count": len(rejected_examples),
+            "contamination_rejection_rate": contamination_rejection_rate,
+            "contamination_flag": contamination_rejection_rate > 0.05,
+            "contamination_recommendation": "exclude-source-for-language" if contamination_rejection_rate > 0.05 else "retain-source-for-language",
+            "findings": findings,
+            "sanity_gates": gates,
+        },
+        "retriever_summaries": retriever_summaries,
+        "rows": rows,
+        "rejected": [
+            {
+                "query_id": str(example.metadata["query_id"]),
+                "ground_truth_document_id": str(example.metadata["ground_truth_document_id"]),
+                "ground_truth_hash": ground_truth_hash,
+            }
+            for example, ground_truth_hash in rejected_examples
+        ],
+        "benchmark": {
+            "phase": "B.5",
+            "sample_size": sample_size,
+            "top_k": top_k,
+            "bloom_path": str(bloom_path),
+            "cpu_timeout_seconds": cpu_timeout_seconds,
+            "dataset_revision": loaded.revision,
+            "corpus_id": loaded.corpus_id,
+            "eval_split": PYTHON_EVAL_FULL,
+            "full_example_count": loaded.metadata.get("full_example_count"),
+            "normalized_surface": "document.index_text",
+        },
+    }
+    write_phase_b_reports(payload, output_dir=output_dir)
+    return payload
+
+
 @app.command("phase-a-quickcheck")
 def phase_a_quickcheck(
     bloom_path: Path = typer.Option(CORNSTACK_BLOOM_PATH, exists=False, dir_okay=False),
@@ -547,6 +723,34 @@ def phase_b_python_full(
         f"BM25 recall@5={by_name['bm25']['recall@5']:.3f} "
         f"UniXcoder recall@5={by_name['unixcoder']['recall@5']:.3f} "
         f"LateOn-Code-edge recall@5={by_name['lateon-code-edge']['recall@5']:.3f} "
+        f"LateOn-Code recall@5={by_name['lateon-code']['recall@5']:.3f} "
+        f"CodeBERT-null recall@5={by_name['codebert']['recall@5']:.3f}"
+    )
+
+
+@app.command("phase-b5-python-full")
+def phase_b5_python_full(
+    bloom_path: Path = typer.Option(CORNSTACK_BLOOM_PATH, exists=False, dir_okay=False),
+    sample_size: int | None = typer.Option(None, min=1),
+    top_k: int = typer.Option(max(RECALL_KS), min=1),
+    output_dir: Path = typer.Option(PHASE_B5_RESULTS_DIR, file_okay=False),
+    cpu_timeout_seconds: float = typer.Option(PHASE_B5_CPU_TIMEOUT_SECONDS, min=1.0),
+) -> None:
+    payload = run_phase_b5_python_full(
+        bloom_path=bloom_path,
+        sample_size=sample_size,
+        top_k=top_k,
+        output_dir=output_dir,
+        cpu_timeout_seconds=cpu_timeout_seconds,
+    )
+    by_name = {summary["retriever"]: summary for summary in payload["retriever_summaries"]}
+    typer.echo(
+        "Phase B.5 Python full-eval benchmark complete: "
+        f"ripgrep recall@5={by_name['ripgrep']['recall@5']:.3f} "
+        f"BM25 recall@5={by_name['bm25']['recall@5']:.3f} "
+        f"UniXcoder recall@5={by_name['unixcoder']['recall@5']:.3f} "
+        f"LateOn-Code-edge recall@5={by_name['lateon-code-edge']['recall@5']:.3f} "
+        f"SIEVE recall@5={by_name['sieve']['recall@5']:.3f} "
         f"LateOn-Code recall@5={by_name['lateon-code']['recall@5']:.3f} "
         f"CodeBERT-null recall@5={by_name['codebert']['recall@5']:.3f}"
     )

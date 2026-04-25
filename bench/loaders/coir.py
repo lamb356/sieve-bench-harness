@@ -29,6 +29,8 @@ from bench.constants import (
     COIR_QUERIES_PATH,
     COIR_SOURCE_NAME,
     GLOBAL_RANDOM_SEED,
+    PYTHON_EVAL_FULL,
+    PYTHON_EVAL_FULL_QUERY_COUNT,
 )
 from bench.loaders.base import CodeDocument, EvalExample, LoadedBenchmark
 
@@ -61,6 +63,8 @@ class CoIRPythonLoader:
         corpus_rows: Iterable[dict[str, Any]],
         qrel_rows: Iterable[dict[str, Any]],
         sample_size: int | None,
+        eval_split: str = PYTHON_EVAL_FULL,
+        expected_example_count: int | None = None,
     ) -> LoadedBenchmark:
         query_rows = list(query_rows)
         corpus_rows = list(corpus_rows)
@@ -120,9 +124,15 @@ class CoIRPythonLoader:
             )
 
         examples = sorted(examples, key=lambda item: str(item.metadata["query_id"]))
+        full_example_count = len(examples)
         if sample_size is not None and sample_size < len(examples):
             rng = random.Random(GLOBAL_RANDOM_SEED)
             examples = sorted(rng.sample(examples, k=sample_size), key=lambda item: str(item.metadata["query_id"]))
+        if sample_size is None and expected_example_count is not None and full_example_count != expected_example_count:
+            raise ValueError(
+                f"Expected {expected_example_count} examples for {eval_split}, got {full_example_count}. "
+                "Pinned CoIR data may have changed or the wrong eval split was loaded."
+            )
 
         return LoadedBenchmark(
             source=COIR_SOURCE_NAME,
@@ -134,6 +144,9 @@ class CoIRPythonLoader:
             metadata={
                 "dataset_id": COIR_DATASET_ID,
                 "dataset_revision": COIR_DATASET_REVISION,
+                "eval_split": eval_split,
+                "expected_example_count": expected_example_count,
+                "full_example_count": full_example_count,
                 "query_row_count": len(query_rows_by_id),
                 "corpus_row_count": len(corpus_rows_by_id),
                 "qrel_row_count": len(qrel_rows),
@@ -149,4 +162,24 @@ class CoIRPythonLoader:
             corpus_rows=corpus_rows,
             qrel_rows=qrel_rows,
             sample_size=sample_size,
+            eval_split=PYTHON_EVAL_FULL,
+            expected_example_count=None,
         )
+
+    def load_full_eval(self, sample_size: int | None = None) -> LoadedBenchmark:
+        query_rows = list(load_dataset("parquet", data_files=_dataset_url(COIR_QUERIES_PATH), split="train"))
+        corpus_rows = list(load_dataset("parquet", data_files=_dataset_url(COIR_CORPUS_PATH), split="train"))
+        qrel_rows = list(load_dataset("parquet", data_files=_dataset_url(COIR_QRELS_TEST_PATH), split="train"))
+        return self._build_loaded_benchmark(
+            query_rows=query_rows,
+            corpus_rows=corpus_rows,
+            qrel_rows=qrel_rows,
+            sample_size=sample_size,
+            eval_split=PYTHON_EVAL_FULL,
+            expected_example_count=PYTHON_EVAL_FULL_QUERY_COUNT if sample_size is None else None,
+        )
+
+
+def load_python_eval_full(*, sample_size: int | None = None) -> LoadedBenchmark:
+    """Load the full CoIR/CodeSearchNet Python eval distribution for Phase B.5."""
+    return CoIRPythonLoader().load_full_eval(sample_size=sample_size)

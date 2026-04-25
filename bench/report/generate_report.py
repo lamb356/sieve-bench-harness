@@ -207,11 +207,17 @@ def render_phase_b_hero_table(payload: dict[str, Any]) -> str:
     else:
         lines.extend(["", "## Findings", "", "- None."])
 
+    lines.extend(["", "## Notes", ""])
+    if str(payload.get("benchmark", {}).get("phase")) == "B.5":
+        lines.extend(
+            [
+                "- Methodology: Phase B v3 is the semantic-hard subset: queries resistant to literal match.",
+                "- Methodology: Phase B.5 is the full CodeSearchNet Python eval distribution, a mixed semantic-hard + raw-surface workload representative of real agent search.",
+                "- Real-world agent retrieval performance lives between these two numbers, weighted toward Phase B.5 when agents see typical query distributions.",
+            ]
+        )
     lines.extend(
         [
-            "",
-            "## Notes",
-            "",
             f"- {phase_label} uses normalized `document.index_text` for all retrievers to keep the benchmark surface aligned with Phase B v1.",
             "- CodeBERT is an explicit null baseline: base pretrained features without retrieval fine-tuning, routed to the extended table.",
             "- UniXcoder uses the required `<encoder-only>` token wrapper before mean pooling and cosine ranking.",

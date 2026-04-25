@@ -77,6 +77,38 @@ def test_phase_b_report_writes_hero_and_extended_tables_json_csv_and_findings(tm
     assert rows[1]["retriever"] == "bm25"
 
 
+def test_phase_b5_methodology_note_present_in_report(tmp_path) -> None:
+    payload = {
+        "summary": {
+            "source": "coir",
+            "language": "python",
+            "query_count": 14702,
+            "corpus_document_count": 14918,
+            "contamination_rejected_count": 0,
+            "findings": [],
+        },
+        "benchmark": {"phase": "B.5", "eval_split": "python-eval-full"},
+        "retriever_summaries": [
+            _summary("ripgrep", 0.45, display_name="ripgrep"),
+            _summary("bm25", 0.60, display_name="BM25"),
+            _summary("codebert", 0.01, display_name="CodeBERT"),
+            _summary("unixcoder", 0.70, display_name="UniXcoder"),
+            _summary("lateon-code-edge", 0.80, display_name="LateOn-Code-edge"),
+            _summary("lateon-code", 0.88, display_name="LateOn-Code"),
+            _summary("sieve", 0.02, display_name="SIEVE"),
+        ],
+        "rows": [],
+    }
+
+    write_phase_b_reports(payload, output_dir=tmp_path)
+
+    table = (tmp_path / "benchmark-table.md").read_text(encoding="utf-8")
+    assert "Phase B v3 is the semantic-hard subset" in table
+    assert "Phase B.5 is the full CodeSearchNet Python eval distribution" in table
+    assert "mixed semantic-hard + raw-surface" in table
+    assert "Real-world agent retrieval performance lives between these two numbers" in table
+
+
 def test_diagnostic_warning_fires_on_near_identical_memory_values(tmp_path) -> None:
     payload = {
         "summary": {

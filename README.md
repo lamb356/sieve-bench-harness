@@ -18,26 +18,29 @@ Diagnostic tooling used to validate retriever implementations lives under `bench
 
 Production-grade benchmark harness for public multi-language code retrieval evaluation.
 
-Current status: Phase B v3 implemented.
+Current status: Phase B v3 implemented; Phase B.5 adds the raw-surface/full-eval CodeSearchNet Python route.
 
 Phase B v3 scope
 - Python only on the same CoIR benchmark surface as Phase A/B v1/v2
-- Seven retrievers: ripgrep, BM25, CodeBERT null baseline, UniXcoder with `<encoder-only>` formatting, LateOn-Code-edge, LateOn-Code, SIEVE deterministic stub
+- Seven retrievers: ripgrep, BM25, CodeBERT null baseline, UniXcoder with `<encoder-only>` formatting, LateOn-Code-edge, LateOn-Code, SIEVE
 - Retrieval metrics: Recall@1/5/10, MRR@10, NDCG@10
 - Performance metrics: p50/p95/p99 latency, throughput, index build time, per-retriever memory footprint
 - CPU memory is reported as isolated subprocess delta RSS; CUDA retrievers keep `torch.cuda.max_memory_allocated()` measurement
 - Full report outputs: JSON, markdown hero + extended tables, CSV audit data, optional HTML view
 - Normalized-code benchmark surface: all Phase B v3 retrievers index `document.index_text`
 
-Phase B v1/v2/v3 audit trail
+Phase B.5 scope
+- Python CodeSearchNet full eval distribution using the same retriever set, metrics, and memory methodology as Phase B v3
+- Raw-surface query distribution: mixed semantic-hard and raw/literal queries rather than the Phase B v3 hard-slice interpretation
+- Separate output directory: `bench-results/phase-b5-python-full/`
+- Separate ripgrep index cache so Phase B v3 artifacts remain reproducible
+- Phase B.5 records raw-surface findings as observational and does not apply Phase B v3 semantic-hard ordering gates
+
+Phase B v1/v2/v3/B.5 audit trail
 - Phase B v1 artifacts remain at `bench-results/phase-b-python-full/` when present locally.
 - Phase B v2 artifacts remain at `bench-results/phase-b-v2-python-full/` and are not overwritten by v3.
-- Phase B v3 writes new artifacts to `bench-results/phase-b-v3-python-full/`.
-
-Phase B.5 planned follow-up
-- After Phase B v3 is verified and pushed, define the raw-surface retriever set and run it on raw code with comments/docstrings preserved.
-- Output directory: `bench-results/phase-b.5-python-raw/`.
-- Phase B.5 is not part of the Phase B execution target.
+- Phase B v3 writes artifacts to `bench-results/phase-b-v3-python-full/`.
+- Phase B.5 writes artifacts to `bench-results/phase-b5-python-full/`.
 
 Phase A scope
 - Python only
@@ -99,6 +102,18 @@ Phase B v3 outputs
 - `bench-results/phase-b-v3-python-full/benchmark-table.md`
 - `bench-results/phase-b-v3-python-full/benchmark-full.csv`
 - `bench-results/phase-b-v3-python-full/interactive.html`
+
+Phase B.5 full-eval Python benchmark target
+```bash
+make bench-python-b5
+```
+The Make target matches Phase B v3's deterministic 100-query run for practical validation while drawing from the full eval distribution. To run the exhaustive 14,702-query full eval, invoke `python -m bench.runners.run_benchmark phase-b5-python-full` without `--sample-size`.
+
+Phase B.5 outputs
+- `bench-results/phase-b5-python-full/results.json`
+- `bench-results/phase-b5-python-full/benchmark-table.md`
+- `bench-results/phase-b5-python-full/benchmark-full.csv`
+- `bench-results/phase-b5-python-full/interactive.html`
 
 Retriever notes
 - Model downloads are cached under `bench/cache/models/`.

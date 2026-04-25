@@ -11,6 +11,8 @@ PHASE_A_RESULTS_DIR = BENCH_RESULTS_DIR / "phase-a-python-quickcheck"
 PHASE_B_RESULTS_DIR = BENCH_RESULTS_DIR / "phase-b-python-full"
 PHASE_B_V2_RESULTS_DIR = BENCH_RESULTS_DIR / "phase-b-v2-python-full"
 PHASE_B_V3_RESULTS_DIR = BENCH_RESULTS_DIR / "phase-b-v3-python-full"
+PHASE_B5_RESULTS_DIR = BENCH_RESULTS_DIR / "phase-b5-python-full"
+PHASE_B5_CPU_TIMEOUT_SECONDS = 3_600.0
 
 GLOBAL_RANDOM_SEED = 1337
 QUICKCHECK_SAMPLE_SIZE = 100
@@ -19,6 +21,7 @@ QUICKCHECK_OUTPUT_JSON = PHASE_A_RESULTS_DIR / "results.json"
 QUICKCHECK_OUTPUT_MD = PHASE_A_RESULTS_DIR / "hero-table.md"
 RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "coir-python-quickcheck"
 PHASE_B_RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "coir-python-full"
+PHASE_B5_RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "coir-python-eval-full"
 
 CODEBERT_MODEL_ID = "microsoft/codebert-base"
 CODEBERT_MODEL_REVISION = "3b0952feddeffad0063f274080e3c23d75e7eb39"
@@ -37,6 +40,8 @@ COIR_CORPUS_ID = "coir-python-test-corpus"
 COIR_QUERIES_PATH = "python-queries/queries-00000-of-00001.parquet"
 COIR_CORPUS_PATH = "python-corpus/corpus-00000-of-00001.parquet"
 COIR_QRELS_TEST_PATH = "python-qrels/test-00000-of-00001.parquet"
+PYTHON_EVAL_FULL = "python-eval-full"
+PYTHON_EVAL_FULL_QUERY_COUNT = 14_702
 
 BLOOM_EXPECTED_ITEMS = 200_000_000
 BLOOM_FALSE_POSITIVE_RATE = 0.01

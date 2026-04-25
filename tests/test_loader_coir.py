@@ -1,3 +1,4 @@
+from bench.constants import PYTHON_EVAL_FULL, PYTHON_EVAL_FULL_QUERY_COUNT
 from bench.loaders.coir import CoIRPythonLoader
 
 
@@ -32,3 +33,45 @@ def test_coir_python_loader_uses_official_test_pairs_only() -> None:
     assert loaded.examples[0].query in {"find the function that returns one", "find the function that returns two"}
     assert loaded.examples[0].ground_truth_code.startswith("def test_")
     assert all(example.metadata["split"] == "test" for example in loaded.examples)
+
+
+def test_phase_b5_loader_returns_correct_split_size() -> None:
+    query_rows = [
+        {
+            "_id": f"q{i}",
+            "title": f"fn_{i}",
+            "partition": "test",
+            "text": f"def fn_{i}():\n    return {i}",
+            "language": "python",
+            "meta_information": {"resource": f"pkg/fn_{i}.py"},
+        }
+        for i in range(PYTHON_EVAL_FULL_QUERY_COUNT)
+    ]
+    corpus_rows = [
+        {
+            "_id": f"c{i}",
+            "title": "",
+            "partition": "test",
+            "text": f"find function {i}",
+            "language": "python",
+            "meta_information": {"resource": f"docs/fn_{i}.txt"},
+        }
+        for i in range(PYTHON_EVAL_FULL_QUERY_COUNT)
+    ]
+    qrel_rows = [
+        {"query-id": f"q{i}", "corpus-id": f"c{i}", "score": 1}
+        for i in range(PYTHON_EVAL_FULL_QUERY_COUNT)
+    ]
+
+    loaded = CoIRPythonLoader._build_loaded_benchmark(
+        query_rows=query_rows,
+        corpus_rows=corpus_rows,
+        qrel_rows=qrel_rows,
+        sample_size=None,
+        eval_split=PYTHON_EVAL_FULL,
+        expected_example_count=PYTHON_EVAL_FULL_QUERY_COUNT,
+    )
+
+    assert loaded.metadata["eval_split"] == PYTHON_EVAL_FULL
+    assert loaded.metadata["expected_example_count"] == PYTHON_EVAL_FULL_QUERY_COUNT
+    assert len(loaded.examples) == PYTHON_EVAL_FULL_QUERY_COUNT
