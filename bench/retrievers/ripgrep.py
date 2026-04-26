@@ -71,8 +71,8 @@ def tokenize_query(query: str, *, limit: int = 12) -> list[str]:
             break
     if tokens:
         return tokens
-    fallback = query.strip().lower()
-    return [fallback] if fallback else []
+    fallback = " ".join(query.strip().lower().split())
+    return [fallback[:128]] if fallback else []
 
 
 class RipgrepRetriever:
@@ -122,6 +122,7 @@ class RipgrepRetriever:
         command = [
             self.binary,
             "--json",
+            "--fixed-strings",
             "--no-heading",
             "--color",
             "never",

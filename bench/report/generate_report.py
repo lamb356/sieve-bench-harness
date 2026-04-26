@@ -146,7 +146,23 @@ def _fallback_metadata(row: dict[str, Any]) -> RetrieverReportMetadata:
 
 
 def _metadata_for(row: dict[str, Any]) -> RetrieverReportMetadata:
-    return RETRIEVER_REPORT_METADATA.get(str(row.get("retriever")), _fallback_metadata(row))
+    base = RETRIEVER_REPORT_METADATA.get(str(row.get("retriever")))
+    if base is None:
+        base = _fallback_metadata(row)
+    return RetrieverReportMetadata(
+        table=str(row.get("table_override", base.table)),  # type: ignore[arg-type]
+        role=str(row.get("role_override", base.role)),
+        role_label=str(row.get("role_label_override", base.role_label)),
+        params=str(row.get("params_override", base.params)),
+        display_name=str(row.get("display_name_override", base.display_name)),
+        order=int(row.get("order_override", base.order)),
+    )
+
+
+def _language_title(language: str) -> str:
+    if language.lower() == "typescript":
+        return "TypeScript"
+    return language.capitalize()
 
 
 def _rows_for_table(payload: dict[str, Any], table: str) -> list[tuple[dict[str, Any], RetrieverReportMetadata]]:
@@ -162,8 +178,24 @@ def _rows_for_table(payload: dict[str, Any], table: str) -> list[tuple[dict[str,
 def render_phase_b_hero_table(payload: dict[str, Any]) -> str:
     summary = payload["summary"]
     phase_label = _phase_label(payload)
+    language_title = _language_title(str(summary["language"]))
+    benchmark = payload.get("benchmark", {})
+    sieve_summary = next((row for row in payload.get("retriever_summaries", []) if row.get("retriever") == "sieve"), {})
+    sieve_embedding = sieve_summary.get("embedding") if isinstance(sieve_summary.get("embedding"), dict) else {}
+    if str(summary.get("language")) == "typescript" and (
+        sieve_embedding.get("interface") == "pending-sieve-placeholder" or sieve_embedding.get("route_status") == "sieve-cli-unavailable"
+    ):
+        sieve_note = (
+            "The SIEVE TypeScript row is a zero-recall pending placeholder because the SIEVE CLI route was unavailable; "
+            "set SIEVE_BINARY or SIEVE_REPO and replace random/local ONNX exports with Phase 1 weights before quality claims."
+        )
+    else:
+        sieve_note = (
+            "The SIEVE row calls the real Rust engine via the existing `sieve index`/`sieve search --format json` CLI; "
+            "Phase 1 weights should replace random/local ONNX exports before final quality claims."
+        )
     lines = [
-        f"# {phase_label} Python benchmark — {summary['source']} / {summary['language']}",
+        f"# {phase_label} {language_title} benchmark — {summary['source']} / {summary['language']}",
         "",
         f"Queries: {summary['query_count']}  ",
         f"Corpus documents: {summary['corpus_document_count']}  ",
@@ -208,12 +240,21 @@ def render_phase_b_hero_table(payload: dict[str, Any]) -> str:
         lines.extend(["", "## Findings", "", "- None."])
 
     lines.extend(["", "## Notes", ""])
-    if str(payload.get("benchmark", {}).get("phase")) == "B.5":
+    if str(payload.get("benchmark", {}).get("phase")) == "B.5" and str(summary.get("language")) == "python":
         lines.extend(
             [
                 "- Methodology: Phase B v3 is the semantic-hard subset: queries resistant to literal match.",
                 "- Methodology: Phase B.5 is the full CodeSearchNet Python eval distribution, a mixed semantic-hard + raw-surface workload representative of real agent search.",
                 "- Real-world agent retrieval performance lives between these two numbers, weighted toward Phase B.5 when agents see typical query distributions.",
+            ]
+        )
+    if str(summary.get("language")) == "typescript":
+        lines.extend(
+            [
+                "- Methodology: ArkTS-CodeSearch (`hreyulog/arkts-code-docstring`) is used as the public TypeScript-family NL-to-code route.",
+                "- Methodology: No clean CodeSearchNet/CoIR TypeScript split exists with comparable public qrels; ArkTS `.ets` keeps TypeScript-family syntax and realistic function-docstring pairs while preserving a documented caveat.",
+                f"- Methodology: Dataset language is `{benchmark.get('dataset_language', 'arkts')}`; eval split is `{benchmark.get('eval_split', 'typescript-arkts-full')}`.",
+                "- SIEVE TypeScript rows are labeled Phase 1 weights pending until real trained ONNX exports replace the current random/local weights.",
             ]
         )
     lines.extend(
@@ -223,7 +264,7 @@ def render_phase_b_hero_table(payload: dict[str, Any]) -> str:
             "- UniXcoder uses the required `<encoder-only>` token wrapper before mean pooling and cosine ranking.",
             "- LateOn-Code-edge and LateOn-Code use pinned public Hugging Face revisions with PyLate ColBERT-style multi-vector embeddings and brute-force MaxSim scoring for this phase.",
             "- CPU-only rows report retriever marginal delta RSS from isolated subprocesses; `results.json` includes baseline, index, search, total, and subprocess PID details.",
-            "- The SIEVE row calls the real Rust engine via the existing `sieve index`/`sieve search --format json` CLI; Phase 1 weights should replace random/local ONNX exports before final quality claims.",
+            f"- {sieve_note}",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -252,18 +293,19 @@ def write_interactive_html(payload: dict[str, Any], *, output_path: Path) -> Non
     phase_label = _phase_label(payload)
     escaped_json = html.escape(json.dumps(payload, indent=2, sort_keys=True))
     escaped_table = html.escape(table)
+    language_title = _language_title(str(payload.get("summary", {}).get("language", "python")))
     html_body = f"""<!doctype html>
 <html lang=\"en\">
 <head>
   <meta charset=\"utf-8\">
-  <title>{phase_label} Python benchmark</title>
+  <title>{phase_label} {language_title} benchmark</title>
   <style>
     body {{ font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.45; }}
     pre {{ background: #111827; color: #f9fafb; padding: 1rem; overflow-x: auto; border-radius: 0.5rem; }}
   </style>
 </head>
 <body>
-  <h1>{phase_label} Python benchmark</h1>
+  <h1>{phase_label} {language_title} benchmark</h1>
   <h2>Markdown table</h2>
   <pre>{escaped_table}</pre>
   <h2>Raw JSON</h2>

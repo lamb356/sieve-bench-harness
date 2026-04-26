@@ -2,7 +2,7 @@ UV ?= uv
 PYTHON ?= $(UV) run --extra dev python
 PIP ?= $(PYTHON) -m pip
 
-.PHONY: bootstrap test fixture-bloom bench-python-quickcheck bench-python bench-python-b5 bench-all clean
+.PHONY: bootstrap test fixture-bloom bench-python-quickcheck bench-python bench-python-b5 bench-typescript-b3 bench-typescript-b5 bench-all clean
 
 bootstrap:
 	$(PIP) install -e '.[dev]'
@@ -21,6 +21,12 @@ bench-python: fixture-bloom
 
 bench-python-b5: fixture-bloom
 	PYTHONPATH=. $(PYTHON) -m bench.runners.run_benchmark phase-b5-python-full --bloom-path bench/cache/cornstack_bloom.bin --sample-size 100 --top-k 10 --output-dir bench-results/phase-b5-python-full
+
+bench-typescript-b3: fixture-bloom
+	PYTHONPATH=. $(PYTHON) -m bench.runners.run_benchmark phase-b-typescript-full --bloom-path bench/cache/cornstack_bloom.bin --sample-size 100 --corpus-sample-size 1000 --top-k 10 --output-dir bench-results/phase-b-typescript-full
+
+bench-typescript-b5: fixture-bloom
+	PYTHONPATH=. $(PYTHON) -m bench.runners.run_benchmark phase-b5-typescript-full --bloom-path bench/cache/cornstack_bloom.bin --sample-size 100 --corpus-sample-size 1000 --top-k 10 --output-dir bench-results/phase-b5-typescript-full
 
 bench-all: bench-python
 

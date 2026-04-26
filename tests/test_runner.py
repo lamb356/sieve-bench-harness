@@ -5,18 +5,22 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from bench.constants import PHASE_B5_RESULTS_DIR
+from bench.constants import PHASE_B5_RESULTS_DIR, PHASE_B5_TYPESCRIPT_RESULTS_DIR, PHASE_B_TYPESCRIPT_RESULTS_DIR
 from bench.contamination.bloom import BloomFilter
 from bench.loaders.base import CodeDocument, EvalExample
 from bench.retrievers.base import SearchResult
 from bench.runners import run_benchmark
 from bench.runners.run_benchmark import (
+    _build_typescript_sieve,
     _multiprocessing_context,
     _phase_b_findings_and_gates,
     _phase_b_retriever_factories,
     _phase_b5_findings_and_gates,
     _phase_b5_retriever_factories,
+    _phase_b_typescript_retriever_factories,
+    _phase_b5_typescript_retriever_factories,
     _run_cpu_retriever_in_subprocess,
+    _typescript_findings_and_gates,
     run_phase_a_quickcheck,
     run_phase_b_python_full,
 )
@@ -89,6 +93,203 @@ def test_phase_b5_runner_outputs_to_correct_directory(monkeypatch: pytest.Monkey
 
     assert result.exit_code == 0, result.output
     assert calls == [PHASE_B5_RESULTS_DIR]
+
+
+def test_phase_b_typescript_runner_outputs_correct_directory(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[Path] = []
+
+    def fake_run_phase_b_typescript_full(
+        *, bloom_path: Path, sample_size: int, top_k: int, output_dir: Path, corpus_sample_size: int | None
+    ):
+        del bloom_path, sample_size, top_k, corpus_sample_size
+        calls.append(output_dir)
+        return {
+            "retriever_summaries": [
+                {"retriever": "ripgrep", "recall@5": 0.30},
+                {"retriever": "bm25", "recall@5": 0.50},
+                {"retriever": "unixcoder", "recall@5": 0.55},
+                {"retriever": "lateon-code-edge", "recall@5": 0.57},
+                {"retriever": "lateon-code", "recall@5": 0.60},
+                {"retriever": "codebert", "recall@5": 0.01},
+                {"retriever": "sieve", "recall@5": 0.00},
+            ]
+        }
+
+    monkeypatch.setattr(run_benchmark, "run_phase_b_typescript_full", fake_run_phase_b_typescript_full)
+
+    result = CliRunner().invoke(run_benchmark.app, ["phase-b-typescript-full"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [PHASE_B_TYPESCRIPT_RESULTS_DIR]
+
+
+def test_phase_b_typescript_runner_forwards_nondefault_options(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_run_phase_b_typescript_full(
+        *, bloom_path: Path, sample_size: int, top_k: int, output_dir: Path, corpus_sample_size: int | None
+    ):
+        calls.append({"sample_size": sample_size, "top_k": top_k, "output_dir": output_dir, "corpus_sample_size": corpus_sample_size})
+        return {
+            "retriever_summaries": [
+                {"retriever": "ripgrep", "recall@5": 0.30},
+                {"retriever": "bm25", "recall@5": 0.50},
+                {"retriever": "unixcoder", "recall@5": 0.55},
+                {"retriever": "lateon-code-edge", "recall@5": 0.57},
+                {"retriever": "lateon-code", "recall@5": 0.60},
+                {"retriever": "codebert", "recall@5": 0.01},
+                {"retriever": "sieve", "recall@5": 0.00},
+            ]
+        }
+
+    monkeypatch.setattr(run_benchmark, "run_phase_b_typescript_full", fake_run_phase_b_typescript_full)
+
+    result = CliRunner().invoke(
+        run_benchmark.app,
+        [
+            "phase-b-typescript-full",
+            "--sample-size",
+            "7",
+            "--top-k",
+            "3",
+            "--corpus-sample-size",
+            "11",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls == [{"sample_size": 7, "top_k": 3, "output_dir": tmp_path, "corpus_sample_size": 11}]
+
+
+def test_phase_b5_typescript_runner_outputs_correct_directory(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[Path] = []
+
+    def fake_run_phase_b5_typescript_full(
+        *,
+        bloom_path: Path,
+        sample_size: int | None,
+        top_k: int,
+        output_dir: Path,
+        cpu_timeout_seconds: float,
+        corpus_sample_size: int | None,
+    ):
+        del bloom_path, sample_size, top_k, cpu_timeout_seconds, corpus_sample_size
+        calls.append(output_dir)
+        return {
+            "retriever_summaries": [
+                {"retriever": "ripgrep", "recall@5": 0.30},
+                {"retriever": "bm25", "recall@5": 0.50},
+                {"retriever": "unixcoder", "recall@5": 0.55},
+                {"retriever": "lateon-code-edge", "recall@5": 0.57},
+                {"retriever": "lateon-code", "recall@5": 0.60},
+                {"retriever": "codebert", "recall@5": 0.01},
+                {"retriever": "sieve", "recall@5": 0.00},
+            ]
+        }
+
+    monkeypatch.setattr(run_benchmark, "run_phase_b5_typescript_full", fake_run_phase_b5_typescript_full)
+
+    result = CliRunner().invoke(run_benchmark.app, ["phase-b5-typescript-full"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [PHASE_B5_TYPESCRIPT_RESULTS_DIR]
+
+
+def test_phase_b5_typescript_runner_forwards_nondefault_options(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_run_phase_b5_typescript_full(
+        *,
+        bloom_path: Path,
+        sample_size: int | None,
+        top_k: int,
+        output_dir: Path,
+        cpu_timeout_seconds: float,
+        corpus_sample_size: int | None,
+    ):
+        calls.append(
+            {
+                "sample_size": sample_size,
+                "top_k": top_k,
+                "output_dir": output_dir,
+                "cpu_timeout_seconds": cpu_timeout_seconds,
+                "corpus_sample_size": corpus_sample_size,
+            }
+        )
+        return {
+            "retriever_summaries": [
+                {"retriever": "ripgrep", "recall@5": 0.30},
+                {"retriever": "bm25", "recall@5": 0.50},
+                {"retriever": "unixcoder", "recall@5": 0.55},
+                {"retriever": "lateon-code-edge", "recall@5": 0.57},
+                {"retriever": "lateon-code", "recall@5": 0.60},
+                {"retriever": "codebert", "recall@5": 0.01},
+                {"retriever": "sieve", "recall@5": 0.00},
+            ]
+        }
+
+    monkeypatch.setattr(run_benchmark, "run_phase_b5_typescript_full", fake_run_phase_b5_typescript_full)
+
+    result = CliRunner().invoke(
+        run_benchmark.app,
+        [
+            "phase-b5-typescript-full",
+            "--sample-size",
+            "9",
+            "--top-k",
+            "4",
+            "--cpu-timeout-seconds",
+            "12.5",
+            "--corpus-sample-size",
+            "13",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls == [
+        {"sample_size": 9, "top_k": 4, "output_dir": tmp_path, "cpu_timeout_seconds": 12.5, "corpus_sample_size": 13}
+    ]
+
+
+def test_typescript_retriever_set_matches_python_b3() -> None:
+    python_b3 = [factory.retriever_name for factory in _phase_b_retriever_factories()]
+
+    assert [factory.retriever_name for factory in _phase_b_typescript_retriever_factories()] == python_b3
+    assert [factory.retriever_name for factory in _phase_b5_typescript_retriever_factories()] == python_b3
+
+
+def test_typescript_findings_are_phase_neutral() -> None:
+    summaries = [
+        {"retriever": "ripgrep", "recall@5": 0.29},
+        {"retriever": "bm25", "recall@5": 0.38},
+        {"retriever": "unixcoder", "recall@5": 0.57},
+        {"retriever": "lateon-code-edge", "recall@5": 0.54},
+        {"retriever": "lateon-code", "recall@5": 0.81},
+        {"retriever": "codebert", "recall@5": 0.0},
+        {"retriever": "sieve", "recall@5": 0.0},
+    ]
+
+    findings, gates = _typescript_findings_and_gates(summaries, phase_label="Phase B v3 TypeScript full eval")
+
+    assert all("B.5 records" not in finding for finding in findings)
+    assert any("Phase B v3 TypeScript full eval records TypeScript-family behavior" in finding for finding in findings)
+    assert {gate.get("scope") for gate in gates.values()} == {"observational-typescript-family"}
+
+
+def test_typescript_sieve_factory_degrades_to_labeled_pending_row_when_cli_route_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SIEVE_BINARY", raising=False)
+    monkeypatch.delenv("SIEVE_REPO", raising=False)
+    monkeypatch.setenv("PATH", "")
+
+    retriever = _build_typescript_sieve()
+
+    assert retriever.name == "sieve"
+    assert retriever.display_name == "SIEVE (Phase 1 weights pending)"
+    assert retriever.embedding_metadata()["route_status"] == "sieve-cli-unavailable"
 
 
 class _PidRecordingRetriever:

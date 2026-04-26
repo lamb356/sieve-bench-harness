@@ -18,10 +18,11 @@ Diagnostic tooling used to validate retriever implementations lives under `bench
 
 Production-grade benchmark harness for public multi-language code retrieval evaluation.
 
-Current status: Phase B v3 implemented; Phase B.5 adds the raw-surface/full-eval CodeSearchNet Python route.
+Current status: Phase B v3 implemented; Phase B.5 adds the raw-surface/full-eval CodeSearchNet Python route; TypeScript-family Phase B v3/B.5 routes are available through ArkTS-CodeSearch for cross-language transfer measurement.
 
 Phase B v3 scope
-- Python only on the same CoIR benchmark surface as Phase A/B v1/v2
+- Python on the same CoIR benchmark surface as Phase A/B v1/v2
+- TypeScript-family route on ArkTS-CodeSearch (`hreyulog/arkts-code-docstring`) when invoked via `phase-b-typescript-full` / `make bench-typescript-b3`; no semantic-hard TypeScript split was identifiable, so this route preserves Phase B v3 retriever methodology over the full ArkTS distribution
 - Seven retrievers: ripgrep, BM25, CodeBERT null baseline, UniXcoder with `<encoder-only>` formatting, LateOn-Code-edge, LateOn-Code, SIEVE
 - Retrieval metrics: Recall@1/5/10, MRR@10, NDCG@10
 - Performance metrics: p50/p95/p99 latency, throughput, index build time, per-retriever memory footprint
@@ -31,16 +32,20 @@ Phase B v3 scope
 
 Phase B.5 scope
 - Python CodeSearchNet full eval distribution using the same retriever set, metrics, and memory methodology as Phase B v3
+- TypeScript-family ArkTS-CodeSearch full eval distribution using the same retriever set, metrics, and memory methodology as Phase B v3/B.5 Python
 - Raw-surface query distribution: mixed semantic-hard and raw/literal queries rather than the Phase B v3 hard-slice interpretation
-- Separate output directory: `bench-results/phase-b5-python-full/`
-- Separate ripgrep index cache so Phase B v3 artifacts remain reproducible
+- Separate Python output directory: `bench-results/phase-b5-python-full/`
+- Separate TypeScript output directory: `bench-results/phase-b5-typescript-full/`
+- Separate ripgrep index caches so Phase B v3 artifacts remain reproducible
 - Phase B.5 records raw-surface findings as observational and does not apply Phase B v3 semantic-hard ordering gates
 
 Phase B v1/v2/v3/B.5 audit trail
 - Phase B v1 artifacts remain at `bench-results/phase-b-python-full/` when present locally.
 - Phase B v2 artifacts remain at `bench-results/phase-b-v2-python-full/` and are not overwritten by v3.
 - Phase B v3 writes artifacts to `bench-results/phase-b-v3-python-full/`.
-- Phase B.5 writes artifacts to `bench-results/phase-b5-python-full/`.
+- Phase B TypeScript writes artifacts to `bench-results/phase-b-typescript-full/`.
+- Phase B.5 Python writes artifacts to `bench-results/phase-b5-python-full/`.
+- Phase B.5 TypeScript writes artifacts to `bench-results/phase-b5-typescript-full/`.
 
 Phase A scope
 - Python only
@@ -65,6 +70,10 @@ Pinned public benchmark provenance
 - CoIR pinned revision: `25e0292562b7bee26dd9b2d83a03981795862c77`
 - Phase A language: Python only
 - Phase A loader uses official `python-qrels/test-00000-of-00001.parquet`
+- TypeScript-family dataset id: `hreyulog/arkts-code-docstring`
+- TypeScript-family pinned revision: `b10cf6c85767455aef80fc02557614a408c183c1`
+- TypeScript-family source language: ArkTS (`.ets`), treated as TypeScript-family syntax for cross-language transfer infrastructure because no clean public CodeSearchNet/CoIR TypeScript qrels split was found
+- ArkTS-CodeSearch split counts: train 19,561; validation 2,445; test 2,446; full route 24,452 non-empty docstring/function query-document pairs
 
 Audit note on licensing/provenance
 - The Hugging Face card for `CoIR-Retrieval/CodeSearchNet` does not currently expose strong license metadata in `card_data`.
@@ -109,11 +118,31 @@ make bench-python-b5
 ```
 The Make target matches Phase B v3's deterministic 100-query run for practical validation while drawing from the full eval distribution. To run the exhaustive 14,702-query full eval, invoke `python -m bench.runners.run_benchmark phase-b5-python-full` without `--sample-size`.
 
+Phase B v3 TypeScript-family benchmark target
+```bash
+make bench-typescript-b3
+```
+The route uses ArkTS-CodeSearch because a semantic-hard TypeScript split with CodeSearchNet/CoIR-style qrels was not identifiable. The Make target uses a deterministic 100-query sample from the full 24,452-query distribution and bounds the corpus to sampled positives plus deterministic negatives for practical validation; omit `--corpus-sample-size` for a full-corpus run.
+
+Phase B.5 TypeScript-family full-eval benchmark target
+```bash
+make bench-typescript-b5
+```
+The Make target draws a deterministic 100-query sample from ArkTS-CodeSearch and bounds the corpus to sampled positives plus deterministic negatives for practical validation. To run the exhaustive 24,452-query/full-corpus eval, invoke `python -m bench.runners.run_benchmark phase-b5-typescript-full` without `--sample-size` or `--corpus-sample-size`.
+
 Phase B.5 outputs
 - `bench-results/phase-b5-python-full/results.json`
 - `bench-results/phase-b5-python-full/benchmark-table.md`
 - `bench-results/phase-b5-python-full/benchmark-full.csv`
 - `bench-results/phase-b5-python-full/interactive.html`
+- `bench-results/phase-b-typescript-full/results.json`
+- `bench-results/phase-b-typescript-full/benchmark-table.md`
+- `bench-results/phase-b-typescript-full/benchmark-full.csv`
+- `bench-results/phase-b-typescript-full/interactive.html`
+- `bench-results/phase-b5-typescript-full/results.json`
+- `bench-results/phase-b5-typescript-full/benchmark-table.md`
+- `bench-results/phase-b5-typescript-full/benchmark-full.csv`
+- `bench-results/phase-b5-typescript-full/interactive.html`
 
 Retriever notes
 - Model downloads are cached under `bench/cache/models/`.
@@ -123,6 +152,7 @@ Retriever notes
 - LateOn-Code pin: `lightonai/LateOn-Code@734b659a57935ef50562d79581c3ff1f8d825c93`.
 - CodeBERT and UniXcoder use 512-token max context, document head+tail truncation, query head-only truncation, mean pooling, and cosine similarity.
 - LateOn retrievers use PyLate multi-vector embeddings and brute-force MaxSim scoring in Phase B v3.
+- TypeScript/ArkTS retriever config is intentionally minimal: ripgrep is text-agnostic; BM25 uses the same punctuation-aware normalized-code tokenization; UniXcoder and LateOn-Code variants use their multilingual/code pretrained encoders without a language flag; CodeBERT remains a null baseline; SIEVE is labeled Phase 1 weights pending until real trained ONNX exports are supplied.
 
 Outputs
 - `bench-results/phase-a-python-quickcheck/results.json`
@@ -146,5 +176,7 @@ Development commands
 make test
 make fixture-bloom
 make bench-python-quickcheck
+make bench-typescript-b3
+make bench-typescript-b5
 make bench-all
 ```
