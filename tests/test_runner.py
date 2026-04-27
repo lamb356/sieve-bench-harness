@@ -5,21 +5,35 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from bench.constants import PHASE_B5_RESULTS_DIR, PHASE_B5_TYPESCRIPT_RESULTS_DIR, PHASE_B_TYPESCRIPT_RESULTS_DIR
+from bench.constants import (
+    PHASE_B5_GO_RESULTS_DIR,
+    PHASE_B5_RESULTS_DIR,
+    PHASE_B5_RUST_RESULTS_DIR,
+    PHASE_B5_TYPESCRIPT_RESULTS_DIR,
+    PHASE_B_GO_RESULTS_DIR,
+    PHASE_B_RUST_RESULTS_DIR,
+    PHASE_B_TYPESCRIPT_RESULTS_DIR,
+)
 from bench.contamination.bloom import BloomFilter
 from bench.loaders.base import CodeDocument, EvalExample
 from bench.retrievers.base import SearchResult
 from bench.runners import run_benchmark
 from bench.runners.run_benchmark import (
+    _build_language_sieve,
     _build_typescript_sieve,
     _multiprocessing_context,
     _phase_b_findings_and_gates,
+    _phase_b_go_retriever_factories,
     _phase_b_retriever_factories,
+    _phase_b_rust_retriever_factories,
     _phase_b5_findings_and_gates,
+    _phase_b5_go_retriever_factories,
     _phase_b5_retriever_factories,
+    _phase_b5_rust_retriever_factories,
     _phase_b_typescript_retriever_factories,
     _phase_b5_typescript_retriever_factories,
     _run_cpu_retriever_in_subprocess,
+    _language_findings_and_gates,
     _typescript_findings_and_gates,
     run_phase_a_quickcheck,
     run_phase_b_python_full,
@@ -255,11 +269,219 @@ def test_phase_b5_typescript_runner_forwards_nondefault_options(monkeypatch: pyt
     ]
 
 
+def test_phase_b_go_runner_outputs_correct_directory(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[Path] = []
+
+    def fake_run_phase_b_go_full(
+        *, bloom_path: Path, sample_size: int, top_k: int, output_dir: Path, corpus_sample_size: int | None
+    ):
+        del bloom_path, sample_size, top_k, corpus_sample_size
+        calls.append(output_dir)
+        return {
+            "retriever_summaries": [
+                {"retriever": "ripgrep", "recall@5": 0.30},
+                {"retriever": "bm25", "recall@5": 0.50},
+                {"retriever": "unixcoder", "recall@5": 0.55},
+                {"retriever": "lateon-code-edge", "recall@5": 0.57},
+                {"retriever": "lateon-code", "recall@5": 0.60},
+                {"retriever": "codebert", "recall@5": 0.01},
+                {"retriever": "sieve", "recall@5": 0.00},
+            ]
+        }
+
+    monkeypatch.setattr(run_benchmark, "run_phase_b_go_full", fake_run_phase_b_go_full)
+
+    result = CliRunner().invoke(run_benchmark.app, ["phase-b-go-full"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [PHASE_B_GO_RESULTS_DIR]
+
+
+def test_phase_b5_go_runner_forwards_nondefault_options(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_run_phase_b5_go_full(
+        *,
+        bloom_path: Path,
+        sample_size: int | None,
+        top_k: int,
+        output_dir: Path,
+        cpu_timeout_seconds: float,
+        corpus_sample_size: int | None,
+    ):
+        calls.append(
+            {
+                "sample_size": sample_size,
+                "top_k": top_k,
+                "output_dir": output_dir,
+                "cpu_timeout_seconds": cpu_timeout_seconds,
+                "corpus_sample_size": corpus_sample_size,
+            }
+        )
+        return {
+            "retriever_summaries": [
+                {"retriever": "ripgrep", "recall@5": 0.30},
+                {"retriever": "bm25", "recall@5": 0.50},
+                {"retriever": "unixcoder", "recall@5": 0.55},
+                {"retriever": "lateon-code-edge", "recall@5": 0.57},
+                {"retriever": "lateon-code", "recall@5": 0.60},
+                {"retriever": "codebert", "recall@5": 0.01},
+                {"retriever": "sieve", "recall@5": 0.00},
+            ]
+        }
+
+    monkeypatch.setattr(run_benchmark, "run_phase_b5_go_full", fake_run_phase_b5_go_full)
+
+    result = CliRunner().invoke(
+        run_benchmark.app,
+        [
+            "phase-b5-go-full",
+            "--sample-size",
+            "9",
+            "--top-k",
+            "4",
+            "--cpu-timeout-seconds",
+            "12.5",
+            "--corpus-sample-size",
+            "13",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls == [
+        {"sample_size": 9, "top_k": 4, "output_dir": tmp_path, "cpu_timeout_seconds": 12.5, "corpus_sample_size": 13}
+    ]
+
+
+def test_phase_b_rust_runner_outputs_correct_directory(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[Path] = []
+
+    def fake_run_phase_b_rust_full(
+        *, bloom_path: Path, sample_size: int, top_k: int, output_dir: Path, corpus_sample_size: int | None
+    ):
+        del bloom_path, sample_size, top_k, corpus_sample_size
+        calls.append(output_dir)
+        return {
+            "retriever_summaries": [
+                {"retriever": "ripgrep", "recall@5": 0.30},
+                {"retriever": "bm25", "recall@5": 0.50},
+                {"retriever": "unixcoder", "recall@5": 0.55},
+                {"retriever": "lateon-code-edge", "recall@5": 0.57},
+                {"retriever": "lateon-code", "recall@5": 0.60},
+                {"retriever": "codebert", "recall@5": 0.01},
+                {"retriever": "sieve", "recall@5": 0.00},
+            ]
+        }
+
+    monkeypatch.setattr(run_benchmark, "run_phase_b_rust_full", fake_run_phase_b_rust_full)
+
+    result = CliRunner().invoke(run_benchmark.app, ["phase-b-rust-full"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [PHASE_B_RUST_RESULTS_DIR]
+
+
+def test_phase_b5_rust_runner_forwards_nondefault_options(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_run_phase_b5_rust_full(
+        *,
+        bloom_path: Path,
+        sample_size: int | None,
+        top_k: int,
+        output_dir: Path,
+        cpu_timeout_seconds: float,
+        corpus_sample_size: int | None,
+    ):
+        calls.append(
+            {
+                "sample_size": sample_size,
+                "top_k": top_k,
+                "output_dir": output_dir,
+                "cpu_timeout_seconds": cpu_timeout_seconds,
+                "corpus_sample_size": corpus_sample_size,
+            }
+        )
+        return {
+            "retriever_summaries": [
+                {"retriever": "ripgrep", "recall@5": 0.30},
+                {"retriever": "bm25", "recall@5": 0.50},
+                {"retriever": "unixcoder", "recall@5": 0.55},
+                {"retriever": "lateon-code-edge", "recall@5": 0.57},
+                {"retriever": "lateon-code", "recall@5": 0.60},
+                {"retriever": "codebert", "recall@5": 0.01},
+                {"retriever": "sieve", "recall@5": 0.00},
+            ]
+        }
+
+    monkeypatch.setattr(run_benchmark, "run_phase_b5_rust_full", fake_run_phase_b5_rust_full)
+
+    result = CliRunner().invoke(
+        run_benchmark.app,
+        [
+            "phase-b5-rust-full",
+            "--sample-size",
+            "9",
+            "--top-k",
+            "4",
+            "--cpu-timeout-seconds",
+            "12.5",
+            "--corpus-sample-size",
+            "13",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls == [
+        {"sample_size": 9, "top_k": 4, "output_dir": tmp_path, "cpu_timeout_seconds": 12.5, "corpus_sample_size": 13}
+    ]
+
+
+def test_multilanguage_retriever_sets_match_python_b3() -> None:
+    python_b3 = [factory.retriever_name for factory in _phase_b_retriever_factories()]
+
+    assert [factory.retriever_name for factory in _phase_b_typescript_retriever_factories()] == python_b3
+    assert [factory.retriever_name for factory in _phase_b5_typescript_retriever_factories()] == python_b3
+    assert [factory.retriever_name for factory in _phase_b_go_retriever_factories()] == python_b3
+    assert [factory.retriever_name for factory in _phase_b5_go_retriever_factories()] == python_b3
+    assert [factory.retriever_name for factory in _phase_b_rust_retriever_factories()] == python_b3
+    assert [factory.retriever_name for factory in _phase_b5_rust_retriever_factories()] == python_b3
+
+
 def test_typescript_retriever_set_matches_python_b3() -> None:
     python_b3 = [factory.retriever_name for factory in _phase_b_retriever_factories()]
 
     assert [factory.retriever_name for factory in _phase_b_typescript_retriever_factories()] == python_b3
     assert [factory.retriever_name for factory in _phase_b5_typescript_retriever_factories()] == python_b3
+
+
+def test_language_findings_mark_sieve_pending_and_name_language() -> None:
+    summaries = [
+        {"retriever": "ripgrep", "recall@5": 0.29},
+        {"retriever": "bm25", "recall@5": 0.38},
+        {"retriever": "unixcoder", "recall@5": 0.57},
+        {"retriever": "lateon-code-edge", "recall@5": 0.54},
+        {"retriever": "lateon-code", "recall@5": 0.81},
+        {"retriever": "codebert", "recall@5": 0.0},
+        {"retriever": "sieve", "recall@5": 0.0},
+    ]
+
+    findings, gates = _language_findings_and_gates(
+        summaries,
+        phase_label="Phase B v3 Go full eval",
+        language_title="Go",
+        dataset_note="official CoIR/CodeSearchNet Go test qrels",
+    )
+
+    assert all("B.5 records" not in finding for finding in findings)
+    assert any("Phase B v3 Go full eval records Go behavior" in finding for finding in findings)
+    assert any("official CoIR/CodeSearchNet Go test qrels" in finding for finding in findings)
+    assert any("SIEVE Go row is labeled Phase 1 weights pending" in finding for finding in findings)
+    assert {gate.get("scope") for gate in gates.values()} == {"observational-go"}
 
 
 def test_typescript_findings_are_phase_neutral() -> None:
@@ -280,6 +502,19 @@ def test_typescript_findings_are_phase_neutral() -> None:
     assert any("Shuu12121/typescript-treesitter-dedupe-filtered-datasetsV2" in finding for finding in findings)
     assert all("ArkTS" not in finding for finding in findings)
     assert {gate.get("scope") for gate in gates.values()} == {"observational-typescript"}
+
+
+def test_multilanguage_sieve_factory_degrades_to_labeled_pending_row_when_cli_route_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SIEVE_BINARY", raising=False)
+    monkeypatch.delenv("SIEVE_REPO", raising=False)
+    monkeypatch.setenv("PATH", "")
+
+    for language_title in ("TypeScript", "Go", "Rust"):
+        retriever = _build_language_sieve(language_title=language_title)
+        assert retriever.name == "sieve"
+        assert retriever.display_name == "SIEVE (Phase 1 weights pending)"
+        assert retriever.embedding_metadata()["route_status"] == "sieve-cli-unavailable"
+        assert retriever.embedding_metadata()["language"] == language_title
 
 
 def test_typescript_sieve_factory_degrades_to_labeled_pending_row_when_cli_route_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:

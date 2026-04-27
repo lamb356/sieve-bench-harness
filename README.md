@@ -18,11 +18,13 @@ Diagnostic tooling used to validate retriever implementations lives under `bench
 
 Production-grade benchmark harness for public multi-language code retrieval evaluation.
 
-Current status: Phase B v3 implemented; Phase B.5 adds the raw-surface/full-eval CodeSearchNet Python route; canonical TypeScript Phase B v3/B.5 routes are available through a pinned public TypeScript `.ts` code/docstring dataset for cross-language transfer measurement.
+Current status: Phase B v3 implemented; Phase B.5 adds the raw-surface/full-eval CodeSearchNet Python route; canonical TypeScript Phase B v3/B.5 routes are available through a pinned public TypeScript `.ts` code/docstring dataset; Go Phase B v3/B.5 routes use official CoIR/CodeSearchNet Go test qrels; Rust Phase B v3/B.5 routes are shipped as a caveated pinned `.rs` docstring/code-pair eval because no official CodeSearchNet/CoIR/CornStack Rust retrieval qrels were identifiable.
 
 Phase B v3 scope
 - Python on the same CoIR benchmark surface as Phase A/B v1/v2
 - Canonical TypeScript route on `Shuu12121/typescript-treesitter-dedupe-filtered-datasetsV2` when invoked via `phase-b-typescript-full` / `make bench-typescript-b3`; no semantic-hard TypeScript split was identifiable, so this route preserves Phase B v3 retriever methodology over the public TypeScript test split
+- Go route on official CoIR/CodeSearchNet Go test qrels when invoked via `phase-b-go-full` / `make bench-go-b3`
+- Rust route on `Shuu12121/rust-treesitter-dedupe-filtered-datasetsV2` when invoked via `phase-b-rust-full` / `make bench-rust-b3`; this is a caveated docstring-pair eval, not official retrieval-qrels coverage
 - Seven retrievers: ripgrep, BM25, CodeBERT null baseline, UniXcoder with `<encoder-only>` formatting, LateOn-Code-edge, LateOn-Code, SIEVE
 - Retrieval metrics: Recall@1/5/10, MRR@10, NDCG@10
 - Performance metrics: p50/p95/p99 latency, throughput, index build time, per-retriever memory footprint
@@ -33,9 +35,13 @@ Phase B v3 scope
 Phase B.5 scope
 - Python CodeSearchNet full eval distribution using the same retriever set, metrics, and memory methodology as Phase B v3
 - Canonical TypeScript full eval distribution using the same retriever set, metrics, and memory methodology as Phase B v3/B.5 Python
+- Go full eval distribution using official CoIR/CodeSearchNet Go test qrels with the same retriever set, metrics, and memory methodology
+- Rust full eval distribution using pinned Rust `.rs` docstring/code pairs with explicit methodology caveat because official Rust retrieval qrels were not identifiable
 - Raw-surface query distribution: mixed semantic-hard and raw/literal queries rather than the Phase B v3 hard-slice interpretation
 - Separate Python output directory: `bench-results/phase-b5-python-full/`
 - Separate TypeScript output directory: `bench-results/phase-b5-typescript-full/`
+- Separate Go output directory: `bench-results/phase-b5-go-full/`
+- Separate Rust output directory: `bench-results/phase-b5-rust-full/`
 - Separate ripgrep index caches so Phase B v3 artifacts remain reproducible
 - Phase B.5 records raw-surface findings as observational and does not apply Phase B v3 semantic-hard ordering gates
 
@@ -44,8 +50,12 @@ Phase B v1/v2/v3/B.5 audit trail
 - Phase B v2 artifacts remain at `bench-results/phase-b-v2-python-full/` and are not overwritten by v3.
 - Phase B v3 writes artifacts to `bench-results/phase-b-v3-python-full/`.
 - Phase B TypeScript writes artifacts to `bench-results/phase-b-typescript-full/`.
+- Phase B Go writes artifacts to `bench-results/phase-b-go-full/`.
+- Phase B Rust writes artifacts to `bench-results/phase-b-rust-full/`.
 - Phase B.5 Python writes artifacts to `bench-results/phase-b5-python-full/`.
 - Phase B.5 TypeScript writes artifacts to `bench-results/phase-b5-typescript-full/`.
+- Phase B.5 Go writes artifacts to `bench-results/phase-b5-go-full/`.
+- Phase B.5 Rust writes artifacts to `bench-results/phase-b5-rust-full/`.
 
 Phase A scope
 - Python only
@@ -70,11 +80,16 @@ Pinned public benchmark provenance
 - CoIR pinned revision: `25e0292562b7bee26dd9b2d83a03981795862c77`
 - Phase A language: Python only
 - Phase A loader uses official `python-qrels/test-00000-of-00001.parquet`
+- Go loader uses official CoIR/CodeSearchNet `go-qrels/test-00000-of-00001.parquet` with 8,122 qrel rows over the pinned revision
 - TypeScript dataset id: `Shuu12121/typescript-treesitter-dedupe-filtered-datasetsV2`
 - TypeScript pinned revision: `1e2fcd3764fb9126a33eaea58961925e667769f0`
 - TypeScript source language: canonical TypeScript (`.ts`) with docstring/code pairs from permissively licensed public repositories
 - TypeScript eval surface: test split only, 11,579 non-empty docstring/code query-document pairs; official split counts are train 328,457; validation 4,493; test 11,579
 - TypeScript dataset license/provenance: Hugging Face card license `apache-2.0`; row-level licenses in the pinned test split are Apache-2.0, MIT, BSD-3-Clause, and ISC
+- Rust dataset id: `Shuu12121/rust-treesitter-dedupe-filtered-datasetsV2`
+- Rust pinned revision: `c0331761290f11fb428d7ac74cccda9fbac81fc2`
+- Rust eval surface: test split only, 8,868 non-empty Rust `.rs` docstring/code query-document pairs; this is a caveated constructed eval because CodeSearchNet/CoIR/CornStack Rust retrieval qrels were not found
+- Rust dataset license/provenance: Hugging Face card license `apache-2.0`; row-level licenses are preserved in metadata and reports
 
 Audit note on licensing/provenance
 - The Hugging Face card for `CoIR-Retrieval/CodeSearchNet` does not currently expose strong license metadata in `card_data`.
@@ -131,6 +146,30 @@ make bench-typescript-b5
 ```
 The Make target draws a deterministic 100-query sample from the pinned TypeScript test split and bounds the corpus to sampled positives plus deterministic negatives for practical validation. To run the exhaustive 11,579-query/full-corpus eval, invoke `python -m bench.runners.run_benchmark phase-b5-typescript-full` without `--sample-size` or `--corpus-sample-size`.
 
+Phase B v3 Go benchmark target
+```bash
+make bench-go-b3
+```
+The route uses the official CoIR/CodeSearchNet Go test qrels at the pinned CoIR revision. The Make target uses a deterministic 100-query sample from the 8,122-qrel Go test surface and bounds the corpus to sampled positives plus deterministic negatives for practical validation. Use `phase-b5-go-full` without `--sample-size` or `--corpus-sample-size` for the exhaustive 8,122-query/full-corpus Go run.
+
+Phase B.5 Go full-eval benchmark target
+```bash
+make bench-go-b5
+```
+The Phase B.5 Go route uses the same official Go qrels and marks ordering gates observational, matching the Python/TypeScript B.5 convention.
+
+Phase B v3 Rust benchmark target
+```bash
+make bench-rust-b3
+```
+The route uses pinned Rust `.rs` docstring/code pairs because no official CodeSearchNet/CoIR/CornStack Rust retrieval qrels were identifiable. Treat this as a cross-language signal and harness-validation track, not as an official retrieval-qrels benchmark.
+
+Phase B.5 Rust full-eval benchmark target
+```bash
+make bench-rust-b5
+```
+The Make target draws a deterministic 100-query sample from the 8,868-row Rust test split and bounds the corpus to sampled positives plus deterministic negatives for practical validation. Invoke `python -m bench.runners.run_benchmark phase-b5-rust-full` without `--sample-size` or `--corpus-sample-size` for the exhaustive 8,868-query/full-corpus Rust run.
+
 Phase B.5 outputs
 - `bench-results/phase-b5-python-full/results.json`
 - `bench-results/phase-b5-python-full/benchmark-table.md`
@@ -144,6 +183,22 @@ Phase B.5 outputs
 - `bench-results/phase-b5-typescript-full/benchmark-table.md`
 - `bench-results/phase-b5-typescript-full/benchmark-full.csv`
 - `bench-results/phase-b5-typescript-full/interactive.html`
+- `bench-results/phase-b-go-full/results.json`
+- `bench-results/phase-b-go-full/benchmark-table.md`
+- `bench-results/phase-b-go-full/benchmark-full.csv`
+- `bench-results/phase-b-go-full/interactive.html`
+- `bench-results/phase-b5-go-full/results.json`
+- `bench-results/phase-b5-go-full/benchmark-table.md`
+- `bench-results/phase-b5-go-full/benchmark-full.csv`
+- `bench-results/phase-b5-go-full/interactive.html`
+- `bench-results/phase-b-rust-full/results.json`
+- `bench-results/phase-b-rust-full/benchmark-table.md`
+- `bench-results/phase-b-rust-full/benchmark-full.csv`
+- `bench-results/phase-b-rust-full/interactive.html`
+- `bench-results/phase-b5-rust-full/results.json`
+- `bench-results/phase-b5-rust-full/benchmark-table.md`
+- `bench-results/phase-b5-rust-full/benchmark-full.csv`
+- `bench-results/phase-b5-rust-full/interactive.html`
 
 Retriever notes
 - Model downloads are cached under `bench/cache/models/`.
@@ -154,6 +209,8 @@ Retriever notes
 - CodeBERT and UniXcoder use 512-token max context, document head+tail truncation, query head-only truncation, mean pooling, and cosine similarity.
 - LateOn retrievers use PyLate multi-vector embeddings and brute-force MaxSim scoring in Phase B v3.
 - TypeScript retriever config is intentionally minimal: ripgrep is text-agnostic; BM25 uses the same punctuation-aware normalized-code tokenization; UniXcoder and LateOn-Code variants use their multilingual/code pretrained encoders without a language flag; CodeBERT remains a null baseline; SIEVE is labeled Phase 1 weights pending until real trained ONNX exports are supplied.
+- Go retriever config follows the TypeScript/Python baseline set over official CoIR/CodeSearchNet Go qrels; UniXcoder is expected to be meaningful on Go because Go is one of its trained CodeSearchNet languages.
+- Rust retriever config follows the same baseline set but is caveated: UniXcoder and LateOn may degrade because the public Rust route is not official CodeSearchNet/CoIR retrieval-qrels coverage, and SIEVE remains Phase 1 weights pending.
 
 Outputs
 - `bench-results/phase-a-python-quickcheck/results.json`
@@ -179,5 +236,9 @@ make fixture-bloom
 make bench-python-quickcheck
 make bench-typescript-b3
 make bench-typescript-b5
+make bench-go-b3
+make bench-go-b5
+make bench-rust-b3
+make bench-rust-b5
 make bench-all
 ```

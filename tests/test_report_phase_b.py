@@ -165,6 +165,105 @@ def test_typescript_methodology_note_present_in_report(tmp_path) -> None:
     assert "SIEVE row calls the real Rust engine" not in table
 
 
+def test_go_methodology_note_present_in_report(tmp_path) -> None:
+    payload = {
+        "summary": {
+            "source": "coir-go",
+            "language": "go",
+            "query_count": 100,
+            "corpus_document_count": 1000,
+            "contamination_rejected_count": 0,
+            "findings": [],
+        },
+        "benchmark": {
+            "phase": "B.5",
+            "eval_split": "go-eval-full",
+            "dataset_id": "CoIR-Retrieval/CodeSearchNet",
+            "dataset_language": "go",
+            "dataset_revision": "25e0292562b7bee26dd9b2d83a03981795862c77",
+            "full_example_count": 8122,
+            "corpus_sample_size": 1000,
+            "corpus_sampling_note": "Corpus was deterministically reduced to sampled positives plus random negatives for a bounded validation run.",
+            "methodology": "Official CoIR/CodeSearchNet Go test qrels.",
+        },
+        "retriever_summaries": [
+            _summary("ripgrep", 0.30, display_name="ripgrep"),
+            _summary("bm25", 0.50, display_name="BM25"),
+            _summary("codebert", 0.01, display_name="CodeBERT"),
+            _summary("unixcoder", 0.55, display_name="UniXcoder"),
+            _summary("lateon-code-edge", 0.57, display_name="LateOn-Code-edge"),
+            _summary("lateon-code", 0.60, display_name="LateOn-Code"),
+            {
+                **_summary("sieve", 0.00, display_name="SIEVE"),
+                "embedding": {"interface": "pending-sieve-placeholder", "route_status": "sieve-cli-unavailable"},
+            },
+        ],
+        "rows": [],
+    }
+
+    write_phase_b_reports(payload, output_dir=tmp_path)
+
+    table = (tmp_path / "benchmark-table.md").read_text(encoding="utf-8")
+    assert "# Phase B.5 Go benchmark — coir-go / go" in table
+    assert "CoIR-Retrieval/CodeSearchNet" in table
+    assert "official CoIR/CodeSearchNet Go test qrels" in table
+    assert "Full eval examples: 8122" in table
+    assert "Phase 1 weights pending" in table
+    assert "zero-recall pending placeholder" in table
+
+
+def test_rust_methodology_note_present_in_report(tmp_path) -> None:
+    payload = {
+        "summary": {
+            "source": "rust-treesitter-dedupe",
+            "language": "rust",
+            "query_count": 100,
+            "corpus_document_count": 1000,
+            "contamination_rejected_count": 0,
+            "findings": [],
+        },
+        "benchmark": {
+            "phase": "B.5",
+            "eval_split": "rust-treesitter-dedupe-test",
+            "dataset_id": "Shuu12121/rust-treesitter-dedupe-filtered-datasetsV2",
+            "dataset_language": "rust",
+            "dataset_card_license": "apache-2.0",
+            "row_license_set": ("Apache-2.0", "MIT"),
+            "unique_repo_count": 42,
+            "eval_source_splits": ("test",),
+            "full_example_count": 8868,
+            "corpus_sample_size": 1000,
+            "corpus_sampling_note": "Corpus was deterministically reduced to sampled positives plus random negatives for a bounded validation run.",
+            "methodology": "No official CodeSearchNet/CoIR/CornStack Rust retrieval qrels were identifiable; this route uses pinned Rust docstring/code pairs.",
+        },
+        "retriever_summaries": [
+            _summary("ripgrep", 0.30, display_name="ripgrep"),
+            _summary("bm25", 0.50, display_name="BM25"),
+            _summary("codebert", 0.01, display_name="CodeBERT"),
+            _summary("unixcoder", 0.55, display_name="UniXcoder"),
+            _summary("lateon-code-edge", 0.57, display_name="LateOn-Code-edge"),
+            _summary("lateon-code", 0.60, display_name="LateOn-Code"),
+            {
+                **_summary("sieve", 0.00, display_name="SIEVE"),
+                "embedding": {"interface": "pending-sieve-placeholder", "route_status": "sieve-cli-unavailable"},
+            },
+        ],
+        "rows": [],
+    }
+
+    write_phase_b_reports(payload, output_dir=tmp_path)
+
+    table = (tmp_path / "benchmark-table.md").read_text(encoding="utf-8")
+    assert "# Phase B.5 Rust benchmark — rust-treesitter-dedupe / rust" in table
+    assert "Shuu12121/rust-treesitter-dedupe-filtered-datasetsV2" in table
+    assert "No official CodeSearchNet/CoIR/CornStack Rust retrieval qrels" in table
+    assert "pinned Rust `.rs` docstring/code pairs" in table
+    assert "Dataset card license is `apache-2.0`" in table
+    assert "Full eval examples: 8868" in table
+    assert "Phase 1 weights pending" in table
+    assert "zero-recall pending placeholder" in table
+
+
 def test_diagnostic_warning_fires_on_near_identical_memory_values(tmp_path) -> None:
     payload = {
         "summary": {

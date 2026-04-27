@@ -26,9 +26,17 @@ from bench.constants import (
     PHASE_B_V2_RESULTS_DIR,
     PHASE_B_V3_RESULTS_DIR,
     PHASE_B5_CPU_TIMEOUT_SECONDS,
+    PHASE_B5_GO_RESULTS_DIR,
+    PHASE_B5_GO_RIPGREP_INDEX_DIR,
     PHASE_B5_RESULTS_DIR,
+    PHASE_B5_RUST_RESULTS_DIR,
+    PHASE_B5_RUST_RIPGREP_INDEX_DIR,
     PHASE_B5_TYPESCRIPT_RESULTS_DIR,
     PHASE_B_RIPGREP_INDEX_DIR,
+    PHASE_B_GO_RESULTS_DIR,
+    PHASE_B_GO_RIPGREP_INDEX_DIR,
+    PHASE_B_RUST_RESULTS_DIR,
+    PHASE_B_RUST_RIPGREP_INDEX_DIR,
     PHASE_B_TYPESCRIPT_RESULTS_DIR,
     PHASE_B_TYPESCRIPT_RIPGREP_INDEX_DIR,
     PHASE_B5_RIPGREP_INDEX_DIR,
@@ -40,12 +48,16 @@ from bench.constants import (
     QUICKCHECK_TOP_K,
     RECALL_KS,
     RIPGREP_INDEX_DIR,
+    GO_EVAL_FULL,
+    RUST_EVAL_FULL,
     TYPESCRIPT_DATASET_ID,
     TYPESCRIPT_EVAL_FULL,
 )
 from bench.contamination.bloom import BloomFilter, assert_canary_membership, normalized_code_hash
 from bench.loaders.base import CodeDocument, EvalExample, LoadedBenchmark
 from bench.loaders.coir import CoIRPythonLoader
+from bench.loaders.go import CoIRGoLoader
+from bench.loaders.rust import RustEvalLoader
 from bench.loaders.typescript import TypeScriptEvalLoader
 from bench.metrics.performance import measure_cpu_retriever_delta_rss, measure_torch_cuda_peak_allocated, summarize_performance
 from bench.metrics.retrieval import aggregate_retrieval_metrics, compute_query_metrics
@@ -193,12 +205,29 @@ def _build_phase_b5_typescript_ripgrep() -> RipgrepRetriever:
     return RipgrepRetriever(index_root=PHASE_B5_TYPESCRIPT_RIPGREP_INDEX_DIR)
 
 
+def _build_phase_b_go_ripgrep() -> RipgrepRetriever:
+    return RipgrepRetriever(index_root=PHASE_B_GO_RIPGREP_INDEX_DIR)
+
+
+def _build_phase_b5_go_ripgrep() -> RipgrepRetriever:
+    return RipgrepRetriever(index_root=PHASE_B5_GO_RIPGREP_INDEX_DIR)
+
+
+def _build_phase_b_rust_ripgrep() -> RipgrepRetriever:
+    return RipgrepRetriever(index_root=PHASE_B_RUST_RIPGREP_INDEX_DIR)
+
+
+def _build_phase_b5_rust_ripgrep() -> RipgrepRetriever:
+    return RipgrepRetriever(index_root=PHASE_B5_RUST_RIPGREP_INDEX_DIR)
+
+
 class _PendingSieveRetriever:
     name = "sieve"
     display_name = "SIEVE (Phase 1 weights pending)"
 
-    def __init__(self, *, reason: str) -> None:
+    def __init__(self, *, reason: str, language_title: str | None = None) -> None:
         self.reason = reason
+        self.language_title = language_title
         self._query_count = 0
 
     def index(self, corpus: tuple[CodeDocument, ...]) -> None:
@@ -214,13 +243,16 @@ class _PendingSieveRetriever:
         return {"p50": 0.0, "p95": 0.0, "p99": 0.0}
 
     def embedding_metadata(self) -> dict[str, Any]:
-        return {
+        metadata = {
             "interface": "pending-sieve-placeholder",
             "weights_status": "Phase 1 weights pending",
             "route_status": "sieve-cli-unavailable",
             "reason": self.reason,
             "query_count": self._query_count,
         }
+        if self.language_title is not None:
+            metadata["language"] = self.language_title
+        return metadata
 
 
 def _sieve_cli_route_available() -> tuple[bool, str]:
@@ -245,6 +277,26 @@ def _build_typescript_sieve() -> Any:
     if available:
         return SieveRetriever()
     return _PendingSieveRetriever(reason=reason)
+
+
+def _build_language_sieve(*, language_title: str) -> Any:
+    available, reason = _sieve_cli_route_available()
+    if available and language_title == "TypeScript":
+        return SieveRetriever()
+    if available:
+        reason = (
+            f"{language_title} SIEVE language route is not enabled for Phase 1 cross-language reporting; "
+            "row is intentionally held as a pending placeholder."
+        )
+    return _PendingSieveRetriever(reason=reason, language_title=language_title)
+
+
+def _build_go_sieve() -> Any:
+    return _build_language_sieve(language_title="Go")
+
+
+def _build_rust_sieve() -> Any:
+    return _build_language_sieve(language_title="Rust")
 
 
 def _phase_b_retriever_factories() -> list[PhaseBRetrieverFactory]:
@@ -293,6 +345,54 @@ def _phase_b5_typescript_retriever_factories() -> list[PhaseBRetrieverFactory]:
         PhaseBRetrieverFactory("ripgrep", _build_phase_b5_typescript_ripgrep, run_in_subprocess=True),
         PhaseBRetrieverFactory("bm25", BM25Retriever, run_in_subprocess=True),
         PhaseBRetrieverFactory("sieve", _build_typescript_sieve, run_in_subprocess=True),
+        PhaseBRetrieverFactory("codebert", CodeBERTRetriever),
+        PhaseBRetrieverFactory("unixcoder", UniXcoderRetriever),
+        PhaseBRetrieverFactory("lateon-code-edge", LateOnCodeEdgeRetriever),
+        PhaseBRetrieverFactory("lateon-code", LateOnCodeRetriever),
+    ]
+
+
+def _phase_b_go_retriever_factories() -> list[PhaseBRetrieverFactory]:
+    return [
+        PhaseBRetrieverFactory("ripgrep", _build_phase_b_go_ripgrep, run_in_subprocess=True),
+        PhaseBRetrieverFactory("bm25", BM25Retriever, run_in_subprocess=True),
+        PhaseBRetrieverFactory("sieve", _build_go_sieve, run_in_subprocess=True),
+        PhaseBRetrieverFactory("codebert", CodeBERTRetriever),
+        PhaseBRetrieverFactory("unixcoder", UniXcoderRetriever),
+        PhaseBRetrieverFactory("lateon-code-edge", LateOnCodeEdgeRetriever),
+        PhaseBRetrieverFactory("lateon-code", LateOnCodeRetriever),
+    ]
+
+
+def _phase_b5_go_retriever_factories() -> list[PhaseBRetrieverFactory]:
+    return [
+        PhaseBRetrieverFactory("ripgrep", _build_phase_b5_go_ripgrep, run_in_subprocess=True),
+        PhaseBRetrieverFactory("bm25", BM25Retriever, run_in_subprocess=True),
+        PhaseBRetrieverFactory("sieve", _build_go_sieve, run_in_subprocess=True),
+        PhaseBRetrieverFactory("codebert", CodeBERTRetriever),
+        PhaseBRetrieverFactory("unixcoder", UniXcoderRetriever),
+        PhaseBRetrieverFactory("lateon-code-edge", LateOnCodeEdgeRetriever),
+        PhaseBRetrieverFactory("lateon-code", LateOnCodeRetriever),
+    ]
+
+
+def _phase_b_rust_retriever_factories() -> list[PhaseBRetrieverFactory]:
+    return [
+        PhaseBRetrieverFactory("ripgrep", _build_phase_b_rust_ripgrep, run_in_subprocess=True),
+        PhaseBRetrieverFactory("bm25", BM25Retriever, run_in_subprocess=True),
+        PhaseBRetrieverFactory("sieve", _build_rust_sieve, run_in_subprocess=True),
+        PhaseBRetrieverFactory("codebert", CodeBERTRetriever),
+        PhaseBRetrieverFactory("unixcoder", UniXcoderRetriever),
+        PhaseBRetrieverFactory("lateon-code-edge", LateOnCodeEdgeRetriever),
+        PhaseBRetrieverFactory("lateon-code", LateOnCodeRetriever),
+    ]
+
+
+def _phase_b5_rust_retriever_factories() -> list[PhaseBRetrieverFactory]:
+    return [
+        PhaseBRetrieverFactory("ripgrep", _build_phase_b5_rust_ripgrep, run_in_subprocess=True),
+        PhaseBRetrieverFactory("bm25", BM25Retriever, run_in_subprocess=True),
+        PhaseBRetrieverFactory("sieve", _build_rust_sieve, run_in_subprocess=True),
         PhaseBRetrieverFactory("codebert", CodeBERTRetriever),
         PhaseBRetrieverFactory("unixcoder", UniXcoderRetriever),
         PhaseBRetrieverFactory("lateon-code-edge", LateOnCodeEdgeRetriever),
@@ -664,7 +764,7 @@ def _run_phase_b_factories(
     return retriever_summaries, rows
 
 
-def _mark_typescript_sieve_pending(retriever_summaries: list[dict[str, Any]]) -> None:
+def _mark_language_sieve_pending(retriever_summaries: list[dict[str, Any]], *, language_title: str) -> None:
     for summary in retriever_summaries:
         if summary.get("retriever") != "sieve":
             continue
@@ -674,15 +774,19 @@ def _mark_typescript_sieve_pending(retriever_summaries: list[dict[str, Any]]) ->
         embedding = summary.get("embedding") if isinstance(summary.get("embedding"), dict) else {}
         if embedding.get("interface") == "pending-sieve-placeholder" or embedding.get("route_status") == "sieve-cli-unavailable":
             note = (
-                "SIEVE CLI route was unavailable, so this row is a zero-recall pending placeholder; "
+                f"SIEVE {language_title} row is a zero-recall pending placeholder; "
                 "set SIEVE_BINARY or SIEVE_REPO and replace ONNX paths with Phase 1 weights before quality claims."
             )
         else:
             note = (
-                "Current TypeScript run uses the existing SIEVE CLI path with random/local ONNX exports; "
+                f"Current {language_title} run uses the existing SIEVE CLI path with random/local ONNX exports; "
                 "replace ONNX paths with Phase 1 weights before quality claims."
             )
         summary.setdefault("notes", []).append(note)
+
+
+def _mark_typescript_sieve_pending(retriever_summaries: list[dict[str, Any]]) -> None:
+    _mark_language_sieve_pending(retriever_summaries, language_title="TypeScript")
 
 
 def _typescript_findings_and_gates(retriever_summaries: list[dict[str, Any]], *, phase_label: str) -> tuple[list[str], dict[str, Any]]:
@@ -707,6 +811,35 @@ def _typescript_findings_and_gates(retriever_summaries: list[dict[str, Any]], *,
     findings.append(
         f"{phase_label} uses canonical TypeScript `.ts` code/docstring pairs from `{TYPESCRIPT_DATASET_ID}` because official CodeXGLUE/CoIR/CodeSearchNet TypeScript retrieval qrels were not available."
     )
+    return findings, gates
+
+
+def _language_findings_and_gates(
+    retriever_summaries: list[dict[str, Any]],
+    *,
+    phase_label: str,
+    language_title: str,
+    dataset_note: str,
+) -> tuple[list[str], dict[str, Any]]:
+    findings, gates = _phase_b5_findings_and_gates(retriever_summaries)
+    scope = f"observational-{language_title.lower()}"
+    for gate in gates.values():
+        if isinstance(gate, dict):
+            gate["scope"] = scope
+            gate["fatal"] = False
+    findings = [
+        finding.replace("on full eval", f"on {language_title} eval").replace(
+            "B.5 records full-eval/raw-surface behavior without applying Phase B semantic-hard ordering gates",
+            f"{phase_label} records {language_title} behavior without applying Python semantic-hard ordering gates",
+        )
+        for finding in findings
+    ]
+    by_name = {summary["retriever"]: summary for summary in retriever_summaries}
+    if "sieve" in by_name:
+        findings.append(
+            f"SIEVE {language_title} row is labeled Phase 1 weights pending (Recall@5={float(by_name['sieve']['recall@5']):.3f}); current numbers validate harness plumbing, not trained cross-language quality."
+        )
+    findings.append(f"{phase_label} uses {dataset_note}.")
     return findings, gates
 
 
@@ -1029,6 +1162,211 @@ def run_phase_b5_typescript_full(
     return payload
 
 
+def _language_benchmark_fields(loaded: LoadedBenchmark, *, eval_split: str, normalized_surface: str = "document.index_text") -> dict[str, Any]:
+    return {
+        "dataset_id": loaded.metadata.get("dataset_id"),
+        "dataset_revision": loaded.revision,
+        "dataset_language": loaded.metadata.get("dataset_language"),
+        "dataset_card_license": loaded.metadata.get("dataset_card_license"),
+        "row_license_set": loaded.metadata.get("row_license_set"),
+        "unique_repo_count": loaded.metadata.get("unique_repo_count"),
+        "corpus_id": loaded.corpus_id,
+        "eval_split": eval_split,
+        "eval_source_splits": loaded.metadata.get("eval_source_splits"),
+        "official_split_counts": loaded.metadata.get("official_split_counts"),
+        "full_example_count": loaded.metadata.get("full_example_count"),
+        "corpus_sample_size": loaded.metadata.get("corpus_sample_size"),
+        "corpus_sampling_note": loaded.metadata.get("corpus_sampling_note"),
+        "split_counts": loaded.metadata.get("split_counts"),
+        "normalized_surface": normalized_surface,
+        "methodology": loaded.metadata.get("methodology"),
+    }
+
+
+def run_phase_b_go_full(
+    *,
+    bloom_path: Path,
+    sample_size: int,
+    top_k: int,
+    output_dir: Path,
+    corpus_sample_size: int | None = None,
+) -> dict[str, Any]:
+    bloom = _require_bloom_filter(bloom_path)
+    loaded = CoIRGoLoader().load_full_eval(sample_size=sample_size, corpus_sample_size=corpus_sample_size)
+    accepted_examples, rejected_examples = _accepted_examples(loaded=loaded, bloom=bloom)
+    retriever_summaries, rows = _run_phase_b_factories(
+        retriever_factories=_phase_b_go_retriever_factories(),
+        loaded=loaded,
+        accepted_examples=accepted_examples,
+        top_k=top_k,
+    )
+    _mark_language_sieve_pending(retriever_summaries, language_title="Go")
+    findings, gates = _language_findings_and_gates(
+        retriever_summaries,
+        phase_label="Phase B v3 Go full eval",
+        language_title="Go",
+        dataset_note="official CoIR/CodeSearchNet Go test qrels",
+    )
+    payload = _phase_b_payload(
+        loaded=loaded,
+        accepted_examples=accepted_examples,
+        rejected_examples=rejected_examples,
+        retriever_summaries=retriever_summaries,
+        rows=rows,
+        findings=findings,
+        gates=gates,
+        benchmark={
+            "phase": "B-v3",
+            "sample_size": sample_size,
+            "top_k": top_k,
+            "bloom_path": str(bloom_path),
+            **_language_benchmark_fields(loaded, eval_split=GO_EVAL_FULL),
+            "phase_b_go_scope_note": "Go uses the official CoIR/CodeSearchNet Go test-qrels distribution while preserving Phase B v3 retriever methodology.",
+        },
+    )
+    write_phase_b_reports(payload, output_dir=output_dir)
+    return payload
+
+
+def run_phase_b5_go_full(
+    *,
+    bloom_path: Path,
+    sample_size: int | None,
+    top_k: int,
+    output_dir: Path,
+    cpu_timeout_seconds: float = PHASE_B5_CPU_TIMEOUT_SECONDS,
+    corpus_sample_size: int | None = None,
+) -> dict[str, Any]:
+    bloom = _require_bloom_filter(bloom_path)
+    loaded = CoIRGoLoader().load_full_eval(sample_size=sample_size, corpus_sample_size=corpus_sample_size)
+    accepted_examples, rejected_examples = _accepted_examples(loaded=loaded, bloom=bloom)
+    retriever_summaries, rows = _run_phase_b_factories(
+        retriever_factories=_phase_b5_go_retriever_factories(),
+        loaded=loaded,
+        accepted_examples=accepted_examples,
+        top_k=top_k,
+        cpu_timeout_seconds=cpu_timeout_seconds,
+    )
+    _mark_language_sieve_pending(retriever_summaries, language_title="Go")
+    findings, gates = _language_findings_and_gates(
+        retriever_summaries,
+        phase_label="Phase B.5 Go full eval",
+        language_title="Go",
+        dataset_note="official CoIR/CodeSearchNet Go test qrels",
+    )
+    payload = _phase_b_payload(
+        loaded=loaded,
+        accepted_examples=accepted_examples,
+        rejected_examples=rejected_examples,
+        retriever_summaries=retriever_summaries,
+        rows=rows,
+        findings=findings,
+        gates=gates,
+        benchmark={
+            "phase": "B.5",
+            "sample_size": sample_size,
+            "top_k": top_k,
+            "bloom_path": str(bloom_path),
+            "cpu_timeout_seconds": cpu_timeout_seconds,
+            **_language_benchmark_fields(loaded, eval_split=GO_EVAL_FULL),
+        },
+    )
+    write_phase_b_reports(payload, output_dir=output_dir)
+    return payload
+
+
+def run_phase_b_rust_full(
+    *,
+    bloom_path: Path,
+    sample_size: int,
+    top_k: int,
+    output_dir: Path,
+    corpus_sample_size: int | None = None,
+) -> dict[str, Any]:
+    bloom = _require_bloom_filter(bloom_path)
+    loaded = RustEvalLoader().load_full_eval(sample_size=sample_size, corpus_sample_size=corpus_sample_size)
+    accepted_examples, rejected_examples = _accepted_examples(loaded=loaded, bloom=bloom)
+    retriever_summaries, rows = _run_phase_b_factories(
+        retriever_factories=_phase_b_rust_retriever_factories(),
+        loaded=loaded,
+        accepted_examples=accepted_examples,
+        top_k=top_k,
+    )
+    _mark_language_sieve_pending(retriever_summaries, language_title="Rust")
+    findings, gates = _language_findings_and_gates(
+        retriever_summaries,
+        phase_label="Phase B v3 Rust full eval",
+        language_title="Rust",
+        dataset_note="pinned Rust `.rs` docstring/code pairs because no official CodeSearchNet/CoIR/CornStack Rust retrieval qrels were identifiable",
+    )
+    payload = _phase_b_payload(
+        loaded=loaded,
+        accepted_examples=accepted_examples,
+        rejected_examples=rejected_examples,
+        retriever_summaries=retriever_summaries,
+        rows=rows,
+        findings=findings,
+        gates=gates,
+        benchmark={
+            "phase": "B-v3",
+            "sample_size": sample_size,
+            "top_k": top_k,
+            "bloom_path": str(bloom_path),
+            **_language_benchmark_fields(loaded, eval_split=RUST_EVAL_FULL),
+            "phase_b_rust_scope_note": "Rust uses a pinned public docstring/code-pair route, not official CodeSearchNet/CoIR/CornStack retrieval qrels.",
+        },
+    )
+    write_phase_b_reports(payload, output_dir=output_dir)
+    return payload
+
+
+def run_phase_b5_rust_full(
+    *,
+    bloom_path: Path,
+    sample_size: int | None,
+    top_k: int,
+    output_dir: Path,
+    cpu_timeout_seconds: float = PHASE_B5_CPU_TIMEOUT_SECONDS,
+    corpus_sample_size: int | None = None,
+) -> dict[str, Any]:
+    bloom = _require_bloom_filter(bloom_path)
+    loaded = RustEvalLoader().load_full_eval(sample_size=sample_size, corpus_sample_size=corpus_sample_size)
+    accepted_examples, rejected_examples = _accepted_examples(loaded=loaded, bloom=bloom)
+    retriever_summaries, rows = _run_phase_b_factories(
+        retriever_factories=_phase_b5_rust_retriever_factories(),
+        loaded=loaded,
+        accepted_examples=accepted_examples,
+        top_k=top_k,
+        cpu_timeout_seconds=cpu_timeout_seconds,
+    )
+    _mark_language_sieve_pending(retriever_summaries, language_title="Rust")
+    findings, gates = _language_findings_and_gates(
+        retriever_summaries,
+        phase_label="Phase B.5 Rust full eval",
+        language_title="Rust",
+        dataset_note="pinned Rust `.rs` docstring/code pairs because no official CodeSearchNet/CoIR/CornStack Rust retrieval qrels were identifiable",
+    )
+    payload = _phase_b_payload(
+        loaded=loaded,
+        accepted_examples=accepted_examples,
+        rejected_examples=rejected_examples,
+        retriever_summaries=retriever_summaries,
+        rows=rows,
+        findings=findings,
+        gates=gates,
+        benchmark={
+            "phase": "B.5",
+            "sample_size": sample_size,
+            "top_k": top_k,
+            "bloom_path": str(bloom_path),
+            "cpu_timeout_seconds": cpu_timeout_seconds,
+            **_language_benchmark_fields(loaded, eval_split=RUST_EVAL_FULL),
+        },
+    )
+    write_phase_b_reports(payload, output_dir=output_dir)
+    return payload
+
+
 @app.command("phase-a-quickcheck")
 def phase_a_quickcheck(
     bloom_path: Path = typer.Option(CORNSTACK_BLOOM_PATH, exists=False, dir_okay=False),
@@ -1147,6 +1485,122 @@ def phase_b5_typescript_full(
     by_name = {summary["retriever"]: summary for summary in payload["retriever_summaries"]}
     typer.echo(
         "Phase B.5 TypeScript full-eval benchmark complete: "
+        f"ripgrep recall@5={by_name['ripgrep']['recall@5']:.3f} "
+        f"BM25 recall@5={by_name['bm25']['recall@5']:.3f} "
+        f"UniXcoder recall@5={by_name['unixcoder']['recall@5']:.3f} "
+        f"LateOn-Code-edge recall@5={by_name['lateon-code-edge']['recall@5']:.3f} "
+        f"SIEVE recall@5={by_name['sieve']['recall@5']:.3f} (Phase 1 weights pending) "
+        f"LateOn-Code recall@5={by_name['lateon-code']['recall@5']:.3f} "
+        f"CodeBERT-null recall@5={by_name['codebert']['recall@5']:.3f}"
+    )
+
+
+@app.command("phase-b-go-full")
+def phase_b_go_full(
+    bloom_path: Path = typer.Option(CORNSTACK_BLOOM_PATH, exists=False, dir_okay=False),
+    sample_size: int = typer.Option(QUICKCHECK_SAMPLE_SIZE, min=1),
+    top_k: int = typer.Option(max(RECALL_KS), min=1),
+    output_dir: Path = typer.Option(PHASE_B_GO_RESULTS_DIR, file_okay=False),
+    corpus_sample_size: int | None = typer.Option(None, min=1),
+) -> None:
+    payload = run_phase_b_go_full(
+        bloom_path=bloom_path,
+        sample_size=sample_size,
+        top_k=top_k,
+        output_dir=output_dir,
+        corpus_sample_size=corpus_sample_size,
+    )
+    by_name = {summary["retriever"]: summary for summary in payload["retriever_summaries"]}
+    typer.echo(
+        "Phase B v3 Go full benchmark complete: "
+        f"ripgrep recall@5={by_name['ripgrep']['recall@5']:.3f} "
+        f"BM25 recall@5={by_name['bm25']['recall@5']:.3f} "
+        f"UniXcoder recall@5={by_name['unixcoder']['recall@5']:.3f} "
+        f"LateOn-Code-edge recall@5={by_name['lateon-code-edge']['recall@5']:.3f} "
+        f"SIEVE recall@5={by_name['sieve']['recall@5']:.3f} (Phase 1 weights pending) "
+        f"LateOn-Code recall@5={by_name['lateon-code']['recall@5']:.3f} "
+        f"CodeBERT-null recall@5={by_name['codebert']['recall@5']:.3f}"
+    )
+
+
+@app.command("phase-b5-go-full")
+def phase_b5_go_full(
+    bloom_path: Path = typer.Option(CORNSTACK_BLOOM_PATH, exists=False, dir_okay=False),
+    sample_size: int | None = typer.Option(None, min=1),
+    top_k: int = typer.Option(max(RECALL_KS), min=1),
+    output_dir: Path = typer.Option(PHASE_B5_GO_RESULTS_DIR, file_okay=False),
+    cpu_timeout_seconds: float = typer.Option(PHASE_B5_CPU_TIMEOUT_SECONDS, min=1.0),
+    corpus_sample_size: int | None = typer.Option(None, min=1),
+) -> None:
+    payload = run_phase_b5_go_full(
+        bloom_path=bloom_path,
+        sample_size=sample_size,
+        top_k=top_k,
+        output_dir=output_dir,
+        cpu_timeout_seconds=cpu_timeout_seconds,
+        corpus_sample_size=corpus_sample_size,
+    )
+    by_name = {summary["retriever"]: summary for summary in payload["retriever_summaries"]}
+    typer.echo(
+        "Phase B.5 Go full-eval benchmark complete: "
+        f"ripgrep recall@5={by_name['ripgrep']['recall@5']:.3f} "
+        f"BM25 recall@5={by_name['bm25']['recall@5']:.3f} "
+        f"UniXcoder recall@5={by_name['unixcoder']['recall@5']:.3f} "
+        f"LateOn-Code-edge recall@5={by_name['lateon-code-edge']['recall@5']:.3f} "
+        f"SIEVE recall@5={by_name['sieve']['recall@5']:.3f} (Phase 1 weights pending) "
+        f"LateOn-Code recall@5={by_name['lateon-code']['recall@5']:.3f} "
+        f"CodeBERT-null recall@5={by_name['codebert']['recall@5']:.3f}"
+    )
+
+
+@app.command("phase-b-rust-full")
+def phase_b_rust_full(
+    bloom_path: Path = typer.Option(CORNSTACK_BLOOM_PATH, exists=False, dir_okay=False),
+    sample_size: int = typer.Option(QUICKCHECK_SAMPLE_SIZE, min=1),
+    top_k: int = typer.Option(max(RECALL_KS), min=1),
+    output_dir: Path = typer.Option(PHASE_B_RUST_RESULTS_DIR, file_okay=False),
+    corpus_sample_size: int | None = typer.Option(None, min=1),
+) -> None:
+    payload = run_phase_b_rust_full(
+        bloom_path=bloom_path,
+        sample_size=sample_size,
+        top_k=top_k,
+        output_dir=output_dir,
+        corpus_sample_size=corpus_sample_size,
+    )
+    by_name = {summary["retriever"]: summary for summary in payload["retriever_summaries"]}
+    typer.echo(
+        "Phase B v3 Rust full benchmark complete: "
+        f"ripgrep recall@5={by_name['ripgrep']['recall@5']:.3f} "
+        f"BM25 recall@5={by_name['bm25']['recall@5']:.3f} "
+        f"UniXcoder recall@5={by_name['unixcoder']['recall@5']:.3f} "
+        f"LateOn-Code-edge recall@5={by_name['lateon-code-edge']['recall@5']:.3f} "
+        f"SIEVE recall@5={by_name['sieve']['recall@5']:.3f} (Phase 1 weights pending) "
+        f"LateOn-Code recall@5={by_name['lateon-code']['recall@5']:.3f} "
+        f"CodeBERT-null recall@5={by_name['codebert']['recall@5']:.3f}"
+    )
+
+
+@app.command("phase-b5-rust-full")
+def phase_b5_rust_full(
+    bloom_path: Path = typer.Option(CORNSTACK_BLOOM_PATH, exists=False, dir_okay=False),
+    sample_size: int | None = typer.Option(None, min=1),
+    top_k: int = typer.Option(max(RECALL_KS), min=1),
+    output_dir: Path = typer.Option(PHASE_B5_RUST_RESULTS_DIR, file_okay=False),
+    cpu_timeout_seconds: float = typer.Option(PHASE_B5_CPU_TIMEOUT_SECONDS, min=1.0),
+    corpus_sample_size: int | None = typer.Option(None, min=1),
+) -> None:
+    payload = run_phase_b5_rust_full(
+        bloom_path=bloom_path,
+        sample_size=sample_size,
+        top_k=top_k,
+        output_dir=output_dir,
+        cpu_timeout_seconds=cpu_timeout_seconds,
+        corpus_sample_size=corpus_sample_size,
+    )
+    by_name = {summary["retriever"]: summary for summary in payload["retriever_summaries"]}
+    typer.echo(
+        "Phase B.5 Rust full-eval benchmark complete: "
         f"ripgrep recall@5={by_name['ripgrep']['recall@5']:.3f} "
         f"BM25 recall@5={by_name['bm25']['recall@5']:.3f} "
         f"UniXcoder recall@5={by_name['unixcoder']['recall@5']:.3f} "

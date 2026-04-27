@@ -14,6 +14,10 @@ PHASE_B_V3_RESULTS_DIR = BENCH_RESULTS_DIR / "phase-b-v3-python-full"
 PHASE_B5_RESULTS_DIR = BENCH_RESULTS_DIR / "phase-b5-python-full"
 PHASE_B_TYPESCRIPT_RESULTS_DIR = BENCH_RESULTS_DIR / "phase-b-typescript-full"
 PHASE_B5_TYPESCRIPT_RESULTS_DIR = BENCH_RESULTS_DIR / "phase-b5-typescript-full"
+PHASE_B_GO_RESULTS_DIR = BENCH_RESULTS_DIR / "phase-b-go-full"
+PHASE_B5_GO_RESULTS_DIR = BENCH_RESULTS_DIR / "phase-b5-go-full"
+PHASE_B_RUST_RESULTS_DIR = BENCH_RESULTS_DIR / "phase-b-rust-full"
+PHASE_B5_RUST_RESULTS_DIR = BENCH_RESULTS_DIR / "phase-b5-rust-full"
 PHASE_B5_CPU_TIMEOUT_SECONDS = 3_600.0
 
 GLOBAL_RANDOM_SEED = 1337
@@ -26,6 +30,10 @@ PHASE_B_RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "coir-pyth
 PHASE_B5_RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "coir-python-eval-full"
 PHASE_B_TYPESCRIPT_RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "typescript-treesitter-dedupe-full"
 PHASE_B5_TYPESCRIPT_RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "typescript-treesitter-dedupe-b5-full"
+PHASE_B_GO_RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "coir-go-full"
+PHASE_B5_GO_RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "coir-go-b5-full"
+PHASE_B_RUST_RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "rust-treesitter-dedupe-full"
+PHASE_B5_RUST_RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "rust-treesitter-dedupe-b5-full"
 
 CODEBERT_MODEL_ID = "microsoft/codebert-base"
 CODEBERT_MODEL_REVISION = "3b0952feddeffad0063f274080e3c23d75e7eb39"
@@ -46,6 +54,28 @@ COIR_CORPUS_PATH = "python-corpus/corpus-00000-of-00001.parquet"
 COIR_QRELS_TEST_PATH = "python-qrels/test-00000-of-00001.parquet"
 PYTHON_EVAL_FULL = "python-eval-full"
 PYTHON_EVAL_FULL_QUERY_COUNT = 14_702
+
+GO_SOURCE_NAME = "coir-go"
+GO_DATASET_ID = COIR_DATASET_ID
+GO_DATASET_REVISION = COIR_DATASET_REVISION
+GO_LANGUAGE = "go"
+GO_CORPUS_ID = "coir-go-test-corpus"
+GO_QUERIES_PATH = "go-queries/queries-00000-of-00001.parquet"
+GO_CORPUS_PATH = "go-corpus/corpus-00000-of-00001.parquet"
+GO_QRELS_TEST_PATH = "go-qrels/test-00000-of-00001.parquet"
+GO_EVAL_FULL = "go-eval-full"
+GO_EVAL_FULL_QUERY_COUNT = 8_122
+
+RUST_SOURCE_NAME = "rust-treesitter-dedupe"
+RUST_DATASET_ID = "Shuu12121/rust-treesitter-dedupe-filtered-datasetsV2"
+RUST_DATASET_REVISION = "c0331761290f11fb428d7ac74cccda9fbac81fc2"
+RUST_LANGUAGE = "rust"
+RUST_DATASET_LANGUAGE = "rust"
+RUST_CORPUS_ID = "rust-treesitter-dedupe-test-corpus"
+RUST_EVAL_FULL = "rust-treesitter-dedupe-test"
+RUST_EVAL_SOURCE_SPLITS = ("test",)
+RUST_EVAL_FULL_QUERY_COUNT = 8_868
+RUST_SPLIT_COUNTS = {"train": 381_521, "validation": 6_333, "test": 8_868}
 
 TYPESCRIPT_SOURCE_NAME = "typescript-treesitter-dedupe"
 TYPESCRIPT_DATASET_ID = "Shuu12121/typescript-treesitter-dedupe-filtered-datasetsV2"

@@ -182,11 +182,9 @@ def render_phase_b_hero_table(payload: dict[str, Any]) -> str:
     benchmark = payload.get("benchmark", {})
     sieve_summary = next((row for row in payload.get("retriever_summaries", []) if row.get("retriever") == "sieve"), {})
     sieve_embedding = sieve_summary.get("embedding") if isinstance(sieve_summary.get("embedding"), dict) else {}
-    if str(summary.get("language")) == "typescript" and (
-        sieve_embedding.get("interface") == "pending-sieve-placeholder" or sieve_embedding.get("route_status") == "sieve-cli-unavailable"
-    ):
+    if sieve_embedding.get("interface") == "pending-sieve-placeholder" or sieve_embedding.get("route_status") == "sieve-cli-unavailable":
         sieve_note = (
-            "The SIEVE TypeScript row is a zero-recall pending placeholder because the SIEVE CLI route was unavailable; "
+            f"The SIEVE {language_title} row is a zero-recall pending placeholder because the language route or CLI path was unavailable; "
             "set SIEVE_BINARY or SIEVE_REPO and replace random/local ONNX exports with Phase 1 weights before quality claims."
         )
     else:
@@ -262,6 +260,40 @@ def render_phase_b_hero_table(payload: dict[str, Any]) -> str:
             lines.append(
                 f"- Provenance: Dataset card license is `{benchmark.get('dataset_card_license', 'apache-2.0')}`; row license set is `{', '.join(str(item) for item in row_license_set)}` across {benchmark.get('unique_repo_count', 'unknown')} repositories."
             )
+        if benchmark.get("corpus_sampling_note"):
+            lines.append(
+                f"- Sampling: {benchmark['corpus_sampling_note']} Full eval examples: {benchmark.get('full_example_count')}; benchmark corpus documents: {summary.get('corpus_document_count')}; corpus sample size: {benchmark.get('corpus_sample_size')}."
+            )
+    if str(summary.get("language")) == "go":
+        lines.extend(
+            [
+                f"- Methodology: `{benchmark.get('dataset_id', 'CoIR-Retrieval/CodeSearchNet')}` provides the official CoIR/CodeSearchNet Go test qrels used for this route.",
+                f"- Methodology: Dataset language is `{benchmark.get('dataset_language', 'go')}`; eval split is `{benchmark.get('eval_split', 'go-eval-full')}`.",
+                "- SIEVE Go rows are labeled Phase 1 weights pending until real trained ONNX exports and an approved Go route replace the current placeholder.",
+            ]
+        )
+        if benchmark.get("full_example_count") is not None:
+            lines.append(f"- Provenance: Full eval examples: {benchmark.get('full_example_count')}.")
+        if benchmark.get("corpus_sampling_note"):
+            lines.append(
+                f"- Sampling: {benchmark['corpus_sampling_note']} Full eval examples: {benchmark.get('full_example_count')}; benchmark corpus documents: {summary.get('corpus_document_count')}; corpus sample size: {benchmark.get('corpus_sample_size')}."
+            )
+    if str(summary.get("language")) == "rust":
+        lines.extend(
+            [
+                f"- Methodology: `{benchmark.get('dataset_id', 'Shuu12121/rust-treesitter-dedupe-filtered-datasetsV2')}` supplies pinned Rust `.rs` docstring/code pairs for this route.",
+                "- Methodology: No official CodeSearchNet/CoIR/CornStack Rust retrieval qrels were identifiable; this is a caveated docstring-pair eval, not an official retrieval-qrels track.",
+                f"- Methodology: Dataset language is `{benchmark.get('dataset_language', 'rust')}`; eval split is `{benchmark.get('eval_split', 'rust-treesitter-dedupe-test')}`.",
+                "- SIEVE Rust rows are labeled Phase 1 weights pending until real trained ONNX exports and an approved Rust route replace the current placeholder.",
+            ]
+        )
+        row_license_set = benchmark.get("row_license_set") or []
+        if row_license_set:
+            lines.append(
+                f"- Provenance: Dataset card license is `{benchmark.get('dataset_card_license', 'apache-2.0')}`; row license set is `{', '.join(str(item) for item in row_license_set)}` across {benchmark.get('unique_repo_count', 'unknown')} repositories."
+            )
+        if benchmark.get("full_example_count") is not None:
+            lines.append(f"- Provenance: Full eval examples: {benchmark.get('full_example_count')}.")
         if benchmark.get("corpus_sampling_note"):
             lines.append(
                 f"- Sampling: {benchmark['corpus_sampling_note']} Full eval examples: {benchmark.get('full_example_count')}; benchmark corpus documents: {summary.get('corpus_document_count')}; corpus sample size: {benchmark.get('corpus_sample_size')}."
