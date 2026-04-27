@@ -276,8 +276,10 @@ def test_typescript_findings_are_phase_neutral() -> None:
     findings, gates = _typescript_findings_and_gates(summaries, phase_label="Phase B v3 TypeScript full eval")
 
     assert all("B.5 records" not in finding for finding in findings)
-    assert any("Phase B v3 TypeScript full eval records TypeScript-family behavior" in finding for finding in findings)
-    assert {gate.get("scope") for gate in gates.values()} == {"observational-typescript-family"}
+    assert any("Phase B v3 TypeScript full eval records canonical TypeScript behavior" in finding for finding in findings)
+    assert any("Shuu12121/typescript-treesitter-dedupe-filtered-datasetsV2" in finding for finding in findings)
+    assert all("ArkTS" not in finding for finding in findings)
+    assert {gate.get("scope") for gate in gates.values()} == {"observational-typescript"}
 
 
 def test_typescript_sieve_factory_degrades_to_labeled_pending_row_when_cli_route_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:

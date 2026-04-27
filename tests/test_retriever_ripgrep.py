@@ -31,7 +31,7 @@ def test_ripgrep_retriever_finds_relevant_doc_in_top_five(tmp_path) -> None:
 def test_ripgrep_retriever_handles_non_ascii_multiline_queries_without_regex_error(tmp_path) -> None:
     document = CodeDocument(
         document_id="doc-1",
-        path="typescript/doc_1.ets",
+        path="typescript/doc_1.ts",
         code="export function formatLabel(value: number): string { return value.toString(); }",
         language="typescript",
         metadata={},
@@ -39,6 +39,6 @@ def test_ripgrep_retriever_handles_non_ascii_multiline_queries_without_regex_err
     retriever = RipgrepRetriever(index_root=tmp_path / "ripgrep-index")
     retriever.index((document,))
 
-    results = retriever.search("格式化显示值\n支持 ArkTS", k=5)
+    results = retriever.search("格式化显示值\n支持本地化", k=5)
 
     assert results == []

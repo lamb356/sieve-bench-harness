@@ -24,8 +24,8 @@ QUICKCHECK_OUTPUT_MD = PHASE_A_RESULTS_DIR / "hero-table.md"
 RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "coir-python-quickcheck"
 PHASE_B_RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "coir-python-full"
 PHASE_B5_RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "coir-python-eval-full"
-PHASE_B_TYPESCRIPT_RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "arkts-typescript-full"
-PHASE_B5_TYPESCRIPT_RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "arkts-typescript-b5-full"
+PHASE_B_TYPESCRIPT_RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "typescript-treesitter-dedupe-full"
+PHASE_B5_TYPESCRIPT_RIPGREP_INDEX_DIR = BENCH_CACHE_DIR / "indexes" / "ripgrep" / "typescript-treesitter-dedupe-b5-full"
 
 CODEBERT_MODEL_ID = "microsoft/codebert-base"
 CODEBERT_MODEL_REVISION = "3b0952feddeffad0063f274080e3c23d75e7eb39"
@@ -47,16 +47,17 @@ COIR_QRELS_TEST_PATH = "python-qrels/test-00000-of-00001.parquet"
 PYTHON_EVAL_FULL = "python-eval-full"
 PYTHON_EVAL_FULL_QUERY_COUNT = 14_702
 
-TYPESCRIPT_SOURCE_NAME = "arkts-codesearch"
-TYPESCRIPT_DATASET_ID = "hreyulog/arkts-code-docstring"
-TYPESCRIPT_DATASET_REVISION = "b10cf6c85767455aef80fc02557614a408c183c1"
+TYPESCRIPT_SOURCE_NAME = "typescript-treesitter-dedupe"
+TYPESCRIPT_DATASET_ID = "Shuu12121/typescript-treesitter-dedupe-filtered-datasetsV2"
+TYPESCRIPT_DATASET_REVISION = "1e2fcd3764fb9126a33eaea58961925e667769f0"
 TYPESCRIPT_LANGUAGE = "typescript"
-TYPESCRIPT_DATASET_LANGUAGE = "arkts"
-TYPESCRIPT_FAMILY_NAME = "ArkTS"
-TYPESCRIPT_CORPUS_ID = "arkts-codesearch-full-corpus"
-TYPESCRIPT_EVAL_FULL = "typescript-arkts-full"
-TYPESCRIPT_EVAL_FULL_QUERY_COUNT = 24_452
-TYPESCRIPT_SPLIT_COUNTS = {"train": 19_561, "validation": 2_445, "test": 2_446}
+TYPESCRIPT_DATASET_LANGUAGE = "typescript"
+TYPESCRIPT_FAMILY_NAME = "TypeScript"
+TYPESCRIPT_CORPUS_ID = "typescript-treesitter-dedupe-test-corpus"
+TYPESCRIPT_EVAL_FULL = "typescript-treesitter-dedupe-test"
+TYPESCRIPT_EVAL_SOURCE_SPLITS = ("test",)
+TYPESCRIPT_EVAL_FULL_QUERY_COUNT = 11_579
+TYPESCRIPT_SPLIT_COUNTS = {"train": 328_457, "validation": 4_493, "test": 11_579}
 
 BLOOM_EXPECTED_ITEMS = 200_000_000
 BLOOM_FALSE_POSITIVE_RATE = 0.01

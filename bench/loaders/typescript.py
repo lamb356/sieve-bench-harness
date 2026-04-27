@@ -1,22 +1,23 @@
 from __future__ import annotations
 
-"""TypeScript-family code-search loader for Phase B TypeScript routes.
+"""Canonical TypeScript code-search loader for Phase B TypeScript routes.
 
 Dataset choice:
-- Public Hugging Face dataset: hreyulog/arkts-code-docstring
-- Pinned revision: b10cf6c85767455aef80fc02557614a408c183c1
-- Rows: 24,452 non-empty docstring/function pairs across train/validation/test.
-- Surface: ArkTS `.ets`, a TypeScript-family language used by OpenHarmony.
+- Public Hugging Face dataset: Shuu12121/typescript-treesitter-dedupe-filtered-datasetsV2
+- Pinned revision: 1e2fcd3764fb9126a33eaea58961925e667769f0
+- Eval surface: the `test` split, 11,579 non-empty docstring/code pairs.
+- Surface: real TypeScript `.ts` files, not ArkTS/HarmonyOS `.ets` files.
 
 Why this route exists:
-- CodeSearchNet and CoIR do not expose a clean official TypeScript split with
-  CodeSearchNet-style natural-language/code qrels.
-- CrossCodeEval TypeScript is a cross-file code-completion benchmark, not an
-  NL-to-code retrieval benchmark comparable to the current Python Phase B
-  harness.
-- ArkTS-CodeSearch is the highest-quality public TypeScript-family source found
-  with deterministic code/docstring pairs and enough examples for a full
-  distribution route. The report labels this caveat explicitly.
+- The official CoIR/CodeSearchNet mirror used by the Python harness does not
+  expose a TypeScript qrels split, and CodeXGLUE's code-to-text mirrors do not
+  provide a clean maintained TypeScript retrieval split with comparable public
+  qrels.
+- This dataset provides permissively licensed, deduplicated, tree-sitter parsed
+  TypeScript functions with natural-language docstrings, repository/path/url,
+  and row-level license metadata. The harness keeps the same one-query/one-code
+  pairing protocol used by the previous TypeScript route while replacing the
+  underlying ArkTS data with canonical TypeScript.
 """
 
 import hashlib
@@ -24,7 +25,7 @@ import random
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from datasets import DatasetDict, load_dataset
+from datasets import load_dataset
 
 from bench.constants import (
     GLOBAL_RANDOM_SEED,
@@ -34,6 +35,7 @@ from bench.constants import (
     TYPESCRIPT_DATASET_REVISION,
     TYPESCRIPT_EVAL_FULL,
     TYPESCRIPT_EVAL_FULL_QUERY_COUNT,
+    TYPESCRIPT_EVAL_SOURCE_SPLITS,
     TYPESCRIPT_FAMILY_NAME,
     TYPESCRIPT_LANGUAGE,
     TYPESCRIPT_SOURCE_NAME,
@@ -42,37 +44,45 @@ from bench.constants import (
 from bench.contamination.normalize import normalize_for_search
 from bench.loaders.base import CodeDocument, EvalExample, LoadedBenchmark
 
-_SPLIT_ORDER = ("train", "validation", "test")
+_SPLIT_ORDER = TYPESCRIPT_EVAL_SOURCE_SPLITS
 
 
 def _clean_text(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _row_digest(row: Mapping[str, Any], ordinal: int) -> str:
+    digest_source = "\0".join(
+        (
+            _clean_text(row.get("repo")),
+            _clean_text(row.get("path")),
+            _clean_text(row.get("url")),
+            _clean_text(row.get("func_name")),
+            _clean_text(row.get("code")),
+            str(ordinal),
+        )
+    )
+    return hashlib.sha1(digest_source.encode("utf-8")).hexdigest()[:16]
+
+
 def _document_id(split: str, ordinal: int, row: Mapping[str, Any]) -> str:
-    function_sha = _clean_text(row.get("function_sha"))
-    if function_sha:
-        suffix = function_sha[:16]
-    else:
-        digest_source = "\0".join((_clean_text(row.get("sha")), _clean_text(row.get("path")), str(ordinal)))
-        suffix = hashlib.sha1(digest_source.encode("utf-8")).hexdigest()[:16]
-    return f"arkts-{split}-{ordinal:06d}-{suffix}"
+    return f"typescript-{split}-{ordinal:06d}-{_row_digest(row, ordinal)}"
 
 
 def _query_id(split: str, ordinal: int) -> str:
-    return f"arkts-query-{split}-{ordinal:06d}"
+    return f"typescript-query-{split}-{ordinal:06d}"
 
 
 def _unique_document_path(split: str, ordinal: int, row: Mapping[str, Any]) -> str:
     # Multiple function rows can come from the same source file. Prefix with the
     # split/ordinal so file-backed retrievers such as ripgrep never overwrite
-    # documents while still preserving the original `.ets` TypeScript-family suffix.
-    original_path = _clean_text(row.get("path")) or "unknown.ets"
-    return f"arkts/{split}/{ordinal:06d}/{original_path}"
+    # documents while still preserving the original `.ts` suffix.
+    original_path = _clean_text(row.get("path")) or "unknown.ts"
+    return f"typescript/{split}/{ordinal:06d}/{original_path}"
 
 
 class TypeScriptEvalLoader:
-    name = "arkts-codesearch-typescript"
+    name = "typescript-treesitter-dedupe"
 
     def __init__(self, *, revision: str = TYPESCRIPT_DATASET_REVISION) -> None:
         self.revision = revision
@@ -95,8 +105,8 @@ class TypeScriptEvalLoader:
             split_counts[split] = len(rows)
             for ordinal, row in enumerate(rows):
                 docstring = _clean_text(row.get("docstring"))
-                function = _clean_text(row.get("function"))
-                if not docstring or not function:
+                code = _clean_text(row.get("code"))
+                if not docstring or not code:
                     skipped_empty += 1
                     continue
                 ordered_rows.append((split, ordinal, row))
@@ -105,13 +115,17 @@ class TypeScriptEvalLoader:
         examples: list[EvalExample] = []
         qrels: dict[str, dict[str, int]] = {}
         for split, ordinal, row in ordered_rows:
-            code = _clean_text(row.get("function"))
+            code = _clean_text(row.get("code"))
             query = _clean_text(row.get("docstring"))
             doc_id = _document_id(split, ordinal, row)
             query_id = _query_id(split, ordinal)
             path = _unique_document_path(split, ordinal, row)
             original_path = _clean_text(row.get("path"))
             source_language = _clean_text(row.get("language")) or TYPESCRIPT_DATASET_LANGUAGE
+            repo = _clean_text(row.get("repo"))
+            func_name = _clean_text(row.get("func_name"))
+            url = _clean_text(row.get("url"))
+            license_name = _clean_text(row.get("license"))
             document_metadata = {
                 "dataset_id": TYPESCRIPT_DATASET_ID,
                 "dataset_revision": revision,
@@ -119,13 +133,11 @@ class TypeScriptEvalLoader:
                 "typescript_family": TYPESCRIPT_FAMILY_NAME,
                 "source_language": source_language,
                 "split": split,
-                "nwo": _clean_text(row.get("nwo")),
-                "sha": _clean_text(row.get("sha")),
+                "repo": repo,
                 "original_path": original_path,
-                "identifier": _clean_text(row.get("identifier")),
-                "url": _clean_text(row.get("url")),
-                "function_sha": _clean_text(row.get("function_sha")),
-                "source": _clean_text(row.get("source")),
+                "func_name": func_name,
+                "url": url,
+                "license": license_name,
             }
             corpus.append(
                 CodeDocument(
@@ -154,18 +166,19 @@ class TypeScriptEvalLoader:
                         "typescript_family": TYPESCRIPT_FAMILY_NAME,
                         "source_language": source_language,
                         "split": split,
-                        "nwo": document_metadata["nwo"],
-                        "sha": document_metadata["sha"],
+                        "repo": repo,
                         "original_path": original_path,
-                        "identifier": document_metadata["identifier"],
-                        "url": document_metadata["url"],
-                        "function_sha": document_metadata["function_sha"],
+                        "func_name": func_name,
+                        "url": url,
+                        "license": license_name,
                     },
                 )
             )
             qrels[query_id] = {doc_id: 1}
 
         full_example_count = len(examples)
+        full_license_set = tuple(sorted({str(document.metadata.get("license")) for document in corpus if document.metadata.get("license")}))
+        full_repo_count = len({str(document.metadata.get("repo")) for document in corpus if document.metadata.get("repo")})
         if sample_size is not None and sample_size < len(examples):
             rng = random.Random(GLOBAL_RANDOM_SEED)
             sampled = sorted(rng.sample(range(len(examples)), k=sample_size))
@@ -195,10 +208,10 @@ class TypeScriptEvalLoader:
             for example in examples
         }
 
-        if sample_size is None and expected_example_count is not None and full_example_count != expected_example_count:
+        if expected_example_count is not None and full_example_count != expected_example_count:
             raise ValueError(
                 f"Expected {expected_example_count} examples for {eval_split}, got {full_example_count}. "
-                "Pinned ArkTS-CodeSearch data may have changed or the wrong eval split was loaded."
+                "Pinned TypeScript dataset may have changed or the wrong eval split was loaded."
             )
 
         return LoadedBenchmark(
@@ -212,8 +225,12 @@ class TypeScriptEvalLoader:
                 "dataset_id": TYPESCRIPT_DATASET_ID,
                 "dataset_revision": revision,
                 "dataset_language": TYPESCRIPT_DATASET_LANGUAGE,
+                "dataset_card_license": "apache-2.0",
+                "row_license_set": full_license_set,
+                "unique_repo_count": full_repo_count,
                 "typescript_family": TYPESCRIPT_FAMILY_NAME,
                 "eval_split": eval_split,
+                "eval_source_splits": tuple(TYPESCRIPT_EVAL_SOURCE_SPLITS),
                 "expected_example_count": expected_example_count,
                 "full_example_count": full_example_count,
                 "split_counts": split_counts,
@@ -229,17 +246,19 @@ class TypeScriptEvalLoader:
                 "official_split_counts": dict(TYPESCRIPT_SPLIT_COUNTS),
                 "qrels": qrels,
                 "methodology": (
-                    "One natural-language docstring query per ArkTS function; the paired function is the only relevant document. "
-                    "ArkTS is treated as a TypeScript-family eval route because no clean CodeSearchNet/CoIR TypeScript split was found."
+                    "One natural-language docstring query per canonical TypeScript function; "
+                    "the paired TypeScript function is the only relevant document. "
+                    "Rows come from the pinned test split of a permissively licensed tree-sitter/deduplicated TypeScript dataset."
                 ),
             },
         )
 
     def _load_rows_by_split(self) -> dict[str, list[Mapping[str, Any]]]:
-        dataset = load_dataset(TYPESCRIPT_DATASET_ID, revision=self.revision)
-        if not isinstance(dataset, DatasetDict):
-            raise TypeError(f"Expected DatasetDict for {TYPESCRIPT_DATASET_ID}, got {type(dataset).__name__}")
-        return {split: list(dataset[split]) for split in _SPLIT_ORDER}
+        rows_by_split: dict[str, list[Mapping[str, Any]]] = {}
+        for split in TYPESCRIPT_EVAL_SOURCE_SPLITS:
+            dataset = load_dataset(TYPESCRIPT_DATASET_ID, revision=self.revision, split=split)
+            rows_by_split[split] = [dict(row) for row in dataset]
+        return rows_by_split
 
     def load(self, sample_size: int | None = None, *, corpus_sample_size: int | None = None) -> LoadedBenchmark:
         return self.load_full_eval(sample_size=sample_size, corpus_sample_size=corpus_sample_size)
@@ -250,11 +269,11 @@ class TypeScriptEvalLoader:
             sample_size=sample_size,
             corpus_sample_size=corpus_sample_size,
             eval_split=TYPESCRIPT_EVAL_FULL,
-            expected_example_count=TYPESCRIPT_EVAL_FULL_QUERY_COUNT if sample_size is None else None,
+            expected_example_count=TYPESCRIPT_EVAL_FULL_QUERY_COUNT,
             revision=self.revision,
         )
 
 
 def load_typescript_eval_full(*, sample_size: int | None = None, corpus_sample_size: int | None = None) -> LoadedBenchmark:
-    """Load the full public ArkTS-CodeSearch TypeScript-family eval distribution."""
+    """Load the canonical public TypeScript eval distribution."""
     return TypeScriptEvalLoader().load_full_eval(sample_size=sample_size, corpus_sample_size=corpus_sample_size)

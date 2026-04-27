@@ -40,6 +40,7 @@ from bench.constants import (
     QUICKCHECK_TOP_K,
     RECALL_KS,
     RIPGREP_INDEX_DIR,
+    TYPESCRIPT_DATASET_ID,
     TYPESCRIPT_EVAL_FULL,
 )
 from bench.contamination.bloom import BloomFilter, assert_canary_membership, normalized_code_hash
@@ -271,8 +272,8 @@ def _phase_b5_retriever_factories() -> list[PhaseBRetrieverFactory]:
 
 
 def _phase_b_typescript_retriever_factories() -> list[PhaseBRetrieverFactory]:
-    # TypeScript/ArkTS-specific retrieval config:
-    # - ripgrep is text-agnostic and indexes the normalized TypeScript-family `index_text` surface.
+    # TypeScript-specific retrieval config:
+    # - ripgrep is text-agnostic and indexes the normalized TypeScript `index_text` surface.
     # - BM25 uses the same punctuation-aware tokenization over normalized code; commas/braces are delimiters.
     # - SIEVE currently routes through the real CLI with random/local ONNX exports, so report rows are labeled pending.
     # - CodeBERT remains a null baseline; UniXcoder and LateOn-Code variants use their language-agnostic code encoders.
@@ -686,15 +687,15 @@ def _mark_typescript_sieve_pending(retriever_summaries: list[dict[str, Any]]) ->
 
 def _typescript_findings_and_gates(retriever_summaries: list[dict[str, Any]], *, phase_label: str) -> tuple[list[str], dict[str, Any]]:
     findings, gates = _phase_b5_findings_and_gates(retriever_summaries)
-    phase_scope = "observational-typescript-family"
+    phase_scope = "observational-typescript"
     for gate in gates.values():
         if isinstance(gate, dict) and gate.get("scope") == "observational-full-eval":
             gate["scope"] = phase_scope
     findings = [
-        finding.replace("on full eval", "on TypeScript-family eval")
+        finding.replace("on full eval", "on TypeScript eval")
         .replace(
             "B.5 records full-eval/raw-surface behavior without applying Phase B semantic-hard ordering gates",
-            f"{phase_label} records TypeScript-family behavior without applying Python semantic-hard ordering gates",
+            f"{phase_label} records canonical TypeScript behavior without applying Python semantic-hard ordering gates",
         )
         for finding in findings
     ]
@@ -704,7 +705,7 @@ def _typescript_findings_and_gates(retriever_summaries: list[dict[str, Any]], *,
             f"SIEVE TypeScript row is labeled Phase 1 weights pending (Recall@5={float(by_name['sieve']['recall@5']):.3f}); current numbers validate harness plumbing, not trained cross-language quality."
         )
     findings.append(
-        f"{phase_label} uses ArkTS-CodeSearch as a TypeScript-family NL-to-code route because no clean CodeSearchNet/CoIR TypeScript qrels split was found."
+        f"{phase_label} uses canonical TypeScript `.ts` code/docstring pairs from `{TYPESCRIPT_DATASET_ID}` because official CodeXGLUE/CoIR/CodeSearchNet TypeScript retrieval qrels were not available."
     )
     return findings, gates
 
@@ -947,15 +948,20 @@ def run_phase_b_typescript_full(
             "dataset_id": loaded.metadata.get("dataset_id"),
             "dataset_revision": loaded.revision,
             "dataset_language": loaded.metadata.get("dataset_language"),
+            "dataset_card_license": loaded.metadata.get("dataset_card_license"),
+            "row_license_set": loaded.metadata.get("row_license_set"),
+            "unique_repo_count": loaded.metadata.get("unique_repo_count"),
             "typescript_family": loaded.metadata.get("typescript_family"),
             "corpus_id": loaded.corpus_id,
             "eval_split": TYPESCRIPT_EVAL_FULL,
+            "eval_source_splits": loaded.metadata.get("eval_source_splits"),
+            "official_split_counts": loaded.metadata.get("official_split_counts"),
             "full_example_count": loaded.metadata.get("full_example_count"),
             "corpus_sample_size": loaded.metadata.get("corpus_sample_size"),
             "corpus_sampling_note": loaded.metadata.get("corpus_sampling_note"),
             "split_counts": loaded.metadata.get("split_counts"),
             "normalized_surface": "document.index_text",
-            "phase_b_typescript_scope_note": "No semantic-hard TypeScript split was identifiable; this route uses the full ArkTS-CodeSearch distribution while preserving Phase B v3 retriever methodology.",
+            "phase_b_typescript_scope_note": "No semantic-hard TypeScript split was identifiable; this route uses the canonical TypeScript test split while preserving Phase B v3 retriever methodology.",
             "methodology": loaded.metadata.get("methodology"),
         },
     )
@@ -1003,9 +1009,14 @@ def run_phase_b5_typescript_full(
             "dataset_id": loaded.metadata.get("dataset_id"),
             "dataset_revision": loaded.revision,
             "dataset_language": loaded.metadata.get("dataset_language"),
+            "dataset_card_license": loaded.metadata.get("dataset_card_license"),
+            "row_license_set": loaded.metadata.get("row_license_set"),
+            "unique_repo_count": loaded.metadata.get("unique_repo_count"),
             "typescript_family": loaded.metadata.get("typescript_family"),
             "corpus_id": loaded.corpus_id,
             "eval_split": TYPESCRIPT_EVAL_FULL,
+            "eval_source_splits": loaded.metadata.get("eval_source_splits"),
+            "official_split_counts": loaded.metadata.get("official_split_counts"),
             "full_example_count": loaded.metadata.get("full_example_count"),
             "corpus_sample_size": loaded.metadata.get("corpus_sample_size"),
             "corpus_sampling_note": loaded.metadata.get("corpus_sampling_note"),

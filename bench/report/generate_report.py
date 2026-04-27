@@ -251,12 +251,21 @@ def render_phase_b_hero_table(payload: dict[str, Any]) -> str:
     if str(summary.get("language")) == "typescript":
         lines.extend(
             [
-                "- Methodology: ArkTS-CodeSearch (`hreyulog/arkts-code-docstring`) is used as the public TypeScript-family NL-to-code route.",
-                "- Methodology: No clean CodeSearchNet/CoIR TypeScript split exists with comparable public qrels; ArkTS `.ets` keeps TypeScript-family syntax and realistic function-docstring pairs while preserving a documented caveat.",
-                f"- Methodology: Dataset language is `{benchmark.get('dataset_language', 'arkts')}`; eval split is `{benchmark.get('eval_split', 'typescript-arkts-full')}`.",
+                "- Methodology: `Shuu12121/typescript-treesitter-dedupe-filtered-datasetsV2` is used as the public canonical TypeScript `.ts` NL-to-code route.",
+                "- Methodology: An official CodeXGLUE/CoIR/CodeSearchNet TypeScript split was not available with comparable public retrieval qrels; this route uses the pinned permissively licensed test split directly with one paired function relevant per query.",
+                f"- Methodology: Dataset language is `{benchmark.get('dataset_language', 'typescript')}`; eval split is `{benchmark.get('eval_split', 'typescript-treesitter-dedupe-test')}`.",
                 "- SIEVE TypeScript rows are labeled Phase 1 weights pending until real trained ONNX exports replace the current random/local weights.",
             ]
         )
+        row_license_set = benchmark.get("row_license_set") or []
+        if row_license_set:
+            lines.append(
+                f"- Provenance: Dataset card license is `{benchmark.get('dataset_card_license', 'apache-2.0')}`; row license set is `{', '.join(str(item) for item in row_license_set)}` across {benchmark.get('unique_repo_count', 'unknown')} repositories."
+            )
+        if benchmark.get("corpus_sampling_note"):
+            lines.append(
+                f"- Sampling: {benchmark['corpus_sampling_note']} Full eval examples: {benchmark.get('full_example_count')}; benchmark corpus documents: {summary.get('corpus_document_count')}; corpus sample size: {benchmark.get('corpus_sample_size')}."
+            )
     lines.extend(
         [
             f"- {phase_label} uses normalized `document.index_text` for all retrievers to keep the benchmark surface aligned with Phase B v1.",

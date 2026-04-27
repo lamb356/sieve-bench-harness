@@ -112,19 +112,26 @@ def test_phase_b5_methodology_note_present_in_report(tmp_path) -> None:
 def test_typescript_methodology_note_present_in_report(tmp_path) -> None:
     payload = {
         "summary": {
-            "source": "arkts-codesearch",
+            "source": "typescript-treesitter-dedupe",
             "language": "typescript",
-            "query_count": 24452,
-            "corpus_document_count": 24452,
+            "query_count": 11579,
+            "corpus_document_count": 11579,
             "contamination_rejected_count": 0,
             "findings": [],
         },
         "benchmark": {
             "phase": "B.5",
-            "eval_split": "typescript-arkts-full",
-            "dataset_id": "hreyulog/arkts-code-docstring",
-            "dataset_language": "arkts",
-            "typescript_family": "ArkTS",
+            "eval_split": "typescript-treesitter-dedupe-test",
+            "dataset_id": "Shuu12121/typescript-treesitter-dedupe-filtered-datasetsV2",
+            "dataset_language": "typescript",
+            "dataset_card_license": "apache-2.0",
+            "row_license_set": ("Apache-2.0", "MIT"),
+            "unique_repo_count": 74,
+            "typescript_family": "TypeScript",
+            "eval_source_splits": ("test",),
+            "full_example_count": 11579,
+            "corpus_sample_size": 1000,
+            "corpus_sampling_note": "Corpus was deterministically reduced to sampled positives plus random negatives for a bounded validation run.",
         },
         "retriever_summaries": [
             _summary("ripgrep", 0.30, display_name="ripgrep"),
@@ -144,10 +151,15 @@ def test_typescript_methodology_note_present_in_report(tmp_path) -> None:
     write_phase_b_reports(payload, output_dir=tmp_path)
 
     table = (tmp_path / "benchmark-table.md").read_text(encoding="utf-8")
-    assert "# Phase B.5 TypeScript benchmark — arkts-codesearch / typescript" in table
-    assert "ArkTS-CodeSearch" in table
-    assert "TypeScript-family" in table
-    assert "No clean CodeSearchNet/CoIR TypeScript split exists" in table
+    assert "# Phase B.5 TypeScript benchmark — typescript-treesitter-dedupe / typescript" in table
+    assert "Shuu12121/typescript-treesitter-dedupe-filtered-datasetsV2" in table
+    assert "canonical TypeScript `.ts`" in table
+    assert "official CodeXGLUE/CoIR/CodeSearchNet TypeScript split was not available" in table
+    assert "Dataset card license is `apache-2.0`" in table
+    assert "row license set is `Apache-2.0, MIT`" in table
+    assert "Corpus was deterministically reduced" in table
+    assert "Full eval examples: 11579" in table
+    assert "ArkTS" not in table
     assert "Phase 1 weights pending" in table
     assert "zero-recall pending placeholder" in table
     assert "SIEVE row calls the real Rust engine" not in table
