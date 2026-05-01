@@ -61,14 +61,14 @@ def _toy_corpus() -> list[CodeDocument]:
         CodeDocument(
             document_id="doc-json",
             path="python/json.py",
-            code="def parse_http_request(raw):\n    return raw.headers  # raw code should not be indexed here\n",
+            code="def parse_http_request(raw):\n    return raw.headers  # raw code is indexed here\n",
             language="python",
             index_text="write json file serialize data path return dumps",
         ),
         CodeDocument(
             document_id="doc-http",
             path="python/http.py",
-            code="def unrelated_raw_code():\n    return 'raw code is ignored when index_text exists'\n",
+            code="def unrelated_raw_code():\n    return 'index_text decoy should be ignored'\n",
             language="python",
             index_text="parse http request raw request headers return",
         ),
@@ -82,7 +82,7 @@ def _toy_corpus() -> list[CodeDocument]:
     ]
 
 
-def test_pylate_bruteforce_retriever_ranks_by_maxsim_over_normalized_index_text(tmp_path) -> None:
+def test_pylate_bruteforce_retriever_ranks_by_maxsim_over_raw_code(tmp_path) -> None:
     backend = FakePyLateBackend()
     retriever = PyLateBruteForceMaxSimRetriever(
         name="fake-lateon",
@@ -98,12 +98,12 @@ def test_pylate_bruteforce_retriever_ranks_by_maxsim_over_normalized_index_text(
     results = retriever.search("parse http request headers", k=2)
 
     assert backend.document_texts == [
-        "write json file serialize data path return dumps",
-        "parse http request raw request headers return",
-        "gradient norm tensor grad return norm",
+        "def parse_http_request(raw):\n    return raw.headers  # raw code is indexed here\n",
+        "def unrelated_raw_code():\n    return 'index_text decoy should be ignored'\n",
+        "def gradient_norm(tensor):\n    return tensor.grad.norm()\n",
     ]
     assert backend.query_texts == ["parse http request headers"]
-    assert [result.document_id for result in results] == ["doc-http", "doc-gradient"]
+    assert [result.document_id for result in results] == ["doc-json", "doc-gradient"]
     assert results[0].metadata["model_id"] == "test/fake-pylate"
     assert results[0].metadata["model_revision"] == "fake-revision"
     assert results[0].metadata["truncation_strategy"] == "fake-pylate-maxsim"

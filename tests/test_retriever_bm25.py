@@ -61,30 +61,30 @@ def test_bm25_scores_match_rank_bm25_reference_on_deterministic_fixture() -> Non
         CodeDocument(
             document_id="doc-a",
             path="a.py",
-            code="",
+            code="alpha beta beta gamma",
             language="python",
-            index_text="alpha beta beta gamma",
+            index_text="decoy text ignored",
             metadata={},
         ),
         CodeDocument(
             document_id="doc-b",
             path="b.py",
-            code="",
+            code="alpha rare rare beta",
             language="python",
-            index_text="alpha rare rare beta",
+            index_text="decoy text ignored",
             metadata={},
         ),
         CodeDocument(
             document_id="doc-c",
             path="c.py",
-            code="",
+            code="gamma delta epsilon",
             language="python",
-            index_text="gamma delta epsilon",
+            index_text="alpha rare beta decoy should not be indexed",
             metadata={},
         ),
     ]
     query_tokens = tokenize_text("alpha beta rare")
-    reference = BM25Okapi([tokenize_text(document.index_text) for document in corpus])
+    reference = BM25Okapi([tokenize_text(document.code) for document in corpus])
     reference_scores = reference.get_scores(query_tokens)
     expected = sorted(
         (
@@ -104,13 +104,49 @@ def test_bm25_scores_match_rank_bm25_reference_on_deterministic_fixture() -> Non
         assert abs(actual_score - expected_score) < 1e-5
 
 
+def test_bm25_indexes_raw_code_not_index_text_decoys() -> None:
+    retriever = BM25Retriever()
+    retriever.index(
+        [
+            CodeDocument(
+                document_id="raw-doc",
+                path="raw.py",
+                code="def raw_only_signal():\n    return 'target'\n",
+                language="python",
+                index_text="decoy metadata only",
+                metadata={},
+            ),
+            CodeDocument(
+                document_id="index-text-decoy",
+                path="decoy.py",
+                code="def unrelated():\n    return 'noise'\n",
+                language="python",
+                index_text="raw only signal raw only signal raw only signal",
+                metadata={},
+            ),
+            CodeDocument(
+                document_id="idf-noise",
+                path="noise.py",
+                code="def another_unrelated():\n    return 'padding'\n",
+                language="python",
+                index_text="padding metadata",
+                metadata={},
+            ),
+        ]
+    )
+
+    results = retriever.search("raw only signal", k=2)
+
+    assert [result.document_id for result in results] == ["raw-doc"]
+
+
 def test_bm25_latency_under_20ms_p50_on_corpus_of_15k() -> None:
     shared_terms = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu"
     corpus = [
         CodeDocument(
             document_id=f"doc-{index:05d}",
             path=f"python/doc_{index:05d}.py",
-            code=f"def helper_{index}():\n    return {index}\n",
+            code=f"def helper_{index}():\n    # {shared_terms} {'rare_target' if index % 137 == 0 else ''}\n    return {index}\n",
             language="python",
             index_text=f"helper_{index} {shared_terms} {'rare_target' if index % 137 == 0 else ''}",
             metadata={},

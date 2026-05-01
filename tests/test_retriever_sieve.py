@@ -81,6 +81,34 @@ def test_sieve_retriever_uses_cli_and_maps_results(tmp_path: Path) -> None:
     assert retriever.embedding_metadata()["interface"] == "sieve-cli-subprocess"
 
 
+def test_sieve_retriever_materializes_raw_code_not_index_text(tmp_path: Path) -> None:
+    retriever = SieveRetriever(binary_path=_fake_sieve_binary(tmp_path), build_release=False)
+    retriever.index(
+        [
+            CodeDocument(
+                document_id="raw-doc",
+                path="python/raw.py",
+                code="def rawonlysignal():\n    return 'target'\n",
+                language="python",
+                index_text="metadata decoy only",
+            ),
+            CodeDocument(
+                document_id="index-text-decoy",
+                path="python/decoy.py",
+                code="def unrelated():\n    return 'noise'\n",
+                language="python",
+                index_text="rawonlysignal rawonlysignal rawonlysignal",
+            ),
+        ]
+    )
+
+    assert retriever._source_root is not None
+    raw_file = retriever._source_root / "docs" / "000000_raw.py"
+    decoy_file = retriever._source_root / "docs" / "000001_decoy.py"
+    assert raw_file.read_text(encoding="utf-8") == "def rawonlysignal():\n    return 'target'\n"
+    assert "rawonlysignal" not in decoy_file.read_text(encoding="utf-8")
+
+
 def test_sieve_retriever_requires_explicit_repo_or_binary_when_not_on_path(monkeypatch) -> None:
     monkeypatch.delenv("SIEVE_BINARY", raising=False)
     monkeypatch.delenv("SIEVE_REPO", raising=False)

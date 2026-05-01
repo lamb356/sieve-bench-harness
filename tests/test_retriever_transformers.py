@@ -19,7 +19,11 @@ class KeywordEmbeddingBackend:
     truncation_strategy = "test-keyword-no-truncation"
     device = "cpu"
 
+    def __init__(self) -> None:
+        self.encoded_batches: list[list[str]] = []
+
     def encode(self, texts: Sequence[str]) -> np.ndarray:
+        self.encoded_batches.append(list(texts))
         vectors: list[list[float]] = []
         for text in texts:
             lowered = text.lower()
@@ -81,6 +85,35 @@ def test_transformer_retrievers_expose_pinned_model_metadata(tmp_path) -> None:
     assert retriever.embedding_metadata()["model_id"] == "test/mock-code-encoder"
     assert retriever.embedding_metadata()["max_length"] == 512
     assert "truncation_strategy" in retriever.embedding_metadata()
+
+
+@pytest.mark.parametrize("retriever_cls", [CodeBERTRetriever, UniXcoderRetriever])
+def test_transformer_retrievers_encode_raw_code_not_index_text(
+    retriever_cls: type[CodeBERTRetriever] | type[UniXcoderRetriever], tmp_path
+) -> None:
+    backend = KeywordEmbeddingBackend()
+    retriever = retriever_cls(model_cache_dir=tmp_path / "models", embedding_backend=backend)
+    corpus = [
+        CodeDocument(
+            document_id="raw-doc",
+            path="python/raw.py",
+            code="def rawonlysignal():\n    return 'target'\n",
+            language="python",
+            index_text="metadata decoy only",
+        ),
+        CodeDocument(
+            document_id="index-text-decoy",
+            path="python/decoy.py",
+            code="def unrelated():\n    return 'noise'\n",
+            language="python",
+            index_text="rawonlysignal rawonlysignal rawonlysignal",
+        ),
+    ]
+
+    retriever.index(corpus)
+
+    assert backend.encoded_batches[0] == [document.code for document in corpus]
+    assert all("rawonlysignal rawonlysignal" not in text for text in backend.encoded_batches[0])
 
 
 def test_codebert_is_annotated_as_null_baseline_for_extended_table() -> None:

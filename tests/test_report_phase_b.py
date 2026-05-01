@@ -105,7 +105,8 @@ def test_phase_b5_methodology_note_present_in_report(tmp_path) -> None:
     table = (tmp_path / "benchmark-table.md").read_text(encoding="utf-8")
     assert "Phase B v3 is the semantic-hard subset" in table
     assert "Phase B.5 is the full CodeSearchNet Python eval distribution" in table
-    assert "mixed semantic-hard + raw-surface" in table
+    assert "mixed semantic-hard + literal-query workload" in table
+    assert "uses raw `document.code` for all retrievers" in table
     assert "Real-world agent retrieval performance lives between these two numbers" in table
 
 

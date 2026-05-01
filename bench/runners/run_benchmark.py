@@ -325,8 +325,7 @@ def _phase_b5_retriever_factories() -> list[PhaseBRetrieverFactory]:
 
 def _phase_b_typescript_retriever_factories() -> list[PhaseBRetrieverFactory]:
     # TypeScript-specific retrieval config:
-    # - ripgrep is text-agnostic and indexes the normalized TypeScript `index_text` surface.
-    # - BM25 uses the same punctuation-aware tokenization over normalized code; commas/braces are delimiters.
+    # - all retrievers index the same raw `document.code` surface; punctuation/braces remain delimiters for lexical baselines.
     # - SIEVE currently routes through the real CLI with random/local ONNX exports, so report rows are labeled pending.
     # - CodeBERT remains a null baseline; UniXcoder and LateOn-Code variants use their language-agnostic code encoders.
     return [
@@ -718,7 +717,7 @@ def _phase_b5_findings_and_gates(retriever_summaries: list[dict[str, Any]]) -> t
     else:
         findings.append(f"CodeBERT null baseline exceeded the Phase B semantic-hard guardrail on full eval (Recall@5={codebert_recall:.3f}); recorded as observational, not fatal.")
     findings.append(
-        f"SIEVE row included with Recall@5={_recall('sieve'):.3f}; B.5 records full-eval/raw-surface behavior without applying Phase B semantic-hard ordering gates."
+        f"SIEVE row included with Recall@5={_recall('sieve'):.3f}; B.5 records full-eval behavior without applying Phase B semantic-hard ordering gates."
     )
     return findings, gates
 
@@ -798,7 +797,7 @@ def _typescript_findings_and_gates(retriever_summaries: list[dict[str, Any]], *,
     findings = [
         finding.replace("on full eval", "on TypeScript eval")
         .replace(
-            "B.5 records full-eval/raw-surface behavior without applying Phase B semantic-hard ordering gates",
+            "B.5 records full-eval behavior without applying Phase B semantic-hard ordering gates",
             f"{phase_label} records canonical TypeScript behavior without applying Python semantic-hard ordering gates",
         )
         for finding in findings
@@ -829,7 +828,7 @@ def _language_findings_and_gates(
             gate["fatal"] = False
     findings = [
         finding.replace("on full eval", f"on {language_title} eval").replace(
-            "B.5 records full-eval/raw-surface behavior without applying Phase B semantic-hard ordering gates",
+            "B.5 records full-eval behavior without applying Phase B semantic-hard ordering gates",
             f"{phase_label} records {language_title} behavior without applying Python semantic-hard ordering gates",
         )
         for finding in findings
@@ -950,8 +949,8 @@ def run_phase_b_python_full(*, bloom_path: Path, sample_size: int, top_k: int, o
             "bloom_path": str(bloom_path),
             "dataset_revision": loaded.revision,
             "corpus_id": loaded.corpus_id,
-            "normalized_surface": "document.index_text",
-            "phase_b_5_scope_note": "After Phase B is verified and pushed, run the same 5-retriever benchmark on raw code into bench-results/phase-b.5-python-raw/.",
+            "document_surface": "document.code",
+            "phase_b_5_scope_note": "Phase B and Phase B.5 now use the same raw `document.code` retriever input surface; B.5 changes the eval distribution, not the document surface.",
         },
     }
     write_phase_b_reports(payload, output_dir=output_dir)
@@ -1037,7 +1036,7 @@ def run_phase_b5_python_full(
             "corpus_id": loaded.corpus_id,
             "eval_split": PYTHON_EVAL_FULL,
             "full_example_count": loaded.metadata.get("full_example_count"),
-            "normalized_surface": "document.index_text",
+            "document_surface": "document.code",
         },
     }
     write_phase_b_reports(payload, output_dir=output_dir)
@@ -1093,7 +1092,7 @@ def run_phase_b_typescript_full(
             "corpus_sample_size": loaded.metadata.get("corpus_sample_size"),
             "corpus_sampling_note": loaded.metadata.get("corpus_sampling_note"),
             "split_counts": loaded.metadata.get("split_counts"),
-            "normalized_surface": "document.index_text",
+            "document_surface": "document.code",
             "phase_b_typescript_scope_note": "No semantic-hard TypeScript split was identifiable; this route uses the canonical TypeScript test split while preserving Phase B v3 retriever methodology.",
             "methodology": loaded.metadata.get("methodology"),
         },
@@ -1154,7 +1153,7 @@ def run_phase_b5_typescript_full(
             "corpus_sample_size": loaded.metadata.get("corpus_sample_size"),
             "corpus_sampling_note": loaded.metadata.get("corpus_sampling_note"),
             "split_counts": loaded.metadata.get("split_counts"),
-            "normalized_surface": "document.index_text",
+            "document_surface": "document.code",
             "methodology": loaded.metadata.get("methodology"),
         },
     )
@@ -1162,7 +1161,7 @@ def run_phase_b5_typescript_full(
     return payload
 
 
-def _language_benchmark_fields(loaded: LoadedBenchmark, *, eval_split: str, normalized_surface: str = "document.index_text") -> dict[str, Any]:
+def _language_benchmark_fields(loaded: LoadedBenchmark, *, eval_split: str, document_surface: str = "document.code") -> dict[str, Any]:
     return {
         "dataset_id": loaded.metadata.get("dataset_id"),
         "dataset_revision": loaded.revision,
@@ -1178,7 +1177,7 @@ def _language_benchmark_fields(loaded: LoadedBenchmark, *, eval_split: str, norm
         "corpus_sample_size": loaded.metadata.get("corpus_sample_size"),
         "corpus_sampling_note": loaded.metadata.get("corpus_sampling_note"),
         "split_counts": loaded.metadata.get("split_counts"),
-        "normalized_surface": normalized_surface,
+        "document_surface": document_surface,
         "methodology": loaded.metadata.get("methodology"),
     }
 

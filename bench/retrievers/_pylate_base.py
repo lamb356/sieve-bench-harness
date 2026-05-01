@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 from bench.constants import BENCH_MODEL_CACHE_DIR
-from bench.contamination.normalize import normalize_for_search
 from bench.loaders.base import CodeDocument
 from bench.metrics.performance import summarize_latency
 from bench.retrievers.base import SearchResult
@@ -18,9 +17,7 @@ PYLATE_BRUTE_FORCE_TRUNCATION_STRATEGY = (
 
 
 def _document_text(document: CodeDocument) -> str:
-    if document.index_text:
-        return document.index_text
-    return normalize_for_search(document.code, language=document.language)
+    return document.code
 
 
 class PyLateEmbeddingBackend:

@@ -24,7 +24,6 @@ from typing import Any
 import numpy as np
 
 from bench.constants import BENCH_MODEL_CACHE_DIR, CODEBERT_MODEL_ID, CODEBERT_MODEL_REVISION
-from bench.contamination.normalize import normalize_for_search
 from bench.loaders.base import CodeDocument
 from bench.metrics.performance import summarize_latency
 from bench.retrievers.base import SearchResult
@@ -42,9 +41,7 @@ def _l2_normalize(matrix: np.ndarray) -> np.ndarray:
 
 
 def _document_text(document: CodeDocument) -> str:
-    if document.index_text:
-        return document.index_text
-    return normalize_for_search(document.code, language=document.language)
+    return document.code
 
 
 class TransformerEmbeddingBackend:

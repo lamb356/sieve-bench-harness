@@ -100,9 +100,9 @@ class RipgrepRetriever:
             relative_path = _safe_relative_path(document.path)
             destination = self.index_root / relative_path
             destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_text(document.index_text or document.code, encoding="utf-8")
+            destination.write_text(document.code, encoding="utf-8")
             self._documents_by_path[str(relative_path)] = document
-            unique_tokens = set(tokenize_query(f"{document.path} {document.index_text or document.code}", limit=10_000))
+            unique_tokens = set(tokenize_query(document.code, limit=10_000))
             for token in unique_tokens:
                 self._document_frequency[token] += 1
 

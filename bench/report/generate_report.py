@@ -242,7 +242,7 @@ def render_phase_b_hero_table(payload: dict[str, Any]) -> str:
         lines.extend(
             [
                 "- Methodology: Phase B v3 is the semantic-hard subset: queries resistant to literal match.",
-                "- Methodology: Phase B.5 is the full CodeSearchNet Python eval distribution, a mixed semantic-hard + raw-surface workload representative of real agent search.",
+                "- Methodology: Phase B.5 is the full CodeSearchNet Python eval distribution, a mixed semantic-hard + literal-query workload representative of real agent search.",
                 "- Real-world agent retrieval performance lives between these two numbers, weighted toward Phase B.5 when agents see typical query distributions.",
             ]
         )
@@ -300,7 +300,7 @@ def render_phase_b_hero_table(payload: dict[str, Any]) -> str:
             )
     lines.extend(
         [
-            f"- {phase_label} uses normalized `document.index_text` for all retrievers to keep the benchmark surface aligned with Phase B v1.",
+            f"- {phase_label} uses raw `document.code` for all retrievers; loader `document.index_text` remains metadata/cache material only and is not the retrieval input surface.",
             "- CodeBERT is an explicit null baseline: base pretrained features without retrieval fine-tuning, routed to the extended table.",
             "- UniXcoder uses the required `<encoder-only>` token wrapper before mean pooling and cosine ranking.",
             "- LateOn-Code-edge and LateOn-Code use pinned public Hugging Face revisions with PyLate ColBERT-style multi-vector embeddings and brute-force MaxSim scoring for this phase.",

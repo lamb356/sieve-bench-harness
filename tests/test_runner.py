@@ -15,7 +15,7 @@ from bench.constants import (
     PHASE_B_TYPESCRIPT_RESULTS_DIR,
 )
 from bench.contamination.bloom import BloomFilter
-from bench.loaders.base import CodeDocument, EvalExample
+from bench.loaders.base import CodeDocument, EvalExample, LoadedBenchmark
 from bench.retrievers.base import SearchResult
 from bench.runners import run_benchmark
 from bench.runners.run_benchmark import (
@@ -62,6 +62,71 @@ def test_phase_b_python_full_requires_contamination_filter_before_retrievers(tmp
 
     with pytest.raises(FileNotFoundError, match="Contamination checks are mandatory"):
         run_phase_b_python_full(bloom_path=missing_path, sample_size=1, top_k=10, output_dir=tmp_path / "out")
+
+
+def test_phase_b_python_full_payload_pins_raw_document_surface(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    document = CodeDocument(
+        document_id="doc-1",
+        path="python/raw.py",
+        code="def rawonlysignal():\n    return 'target'\n",
+        language="python",
+        index_text="metadata decoy only",
+    )
+    example = EvalExample(
+        query="rawonlysignal",
+        ground_truth_code=document.code,
+        ground_truth_path=document.path,
+        language="python",
+        source="unit",
+        corpus_id="unit-corpus",
+        metadata={"query_id": "q1", "ground_truth_document_id": document.document_id},
+    )
+    loaded = LoadedBenchmark(
+        source="unit",
+        language="python",
+        revision="test-revision",
+        corpus_id="unit-corpus",
+        corpus=(document,),
+        examples=(example,),
+    )
+
+    class FakeLoader:
+        def load(self, sample_size: int | None = None) -> LoadedBenchmark:
+            assert sample_size == 1
+            return loaded
+
+    class RawSurfaceRetriever:
+        name = "raw-surface"
+        display_name = "Raw Surface"
+
+        def index(self, corpus: tuple[CodeDocument, ...]) -> None:
+            self._corpus = corpus
+
+        def search(self, query: str, k: int) -> list[SearchResult]:
+            del query, k
+            return [
+                SearchResult(
+                    document_id=document.document_id,
+                    path=document.path,
+                    score=1.0,
+                    code=self._corpus[0].code,
+                )
+            ]
+
+    monkeypatch.setattr(run_benchmark, "CoIRPythonLoader", FakeLoader)
+    monkeypatch.setattr(run_benchmark, "_require_bloom_filter", lambda bloom_path: set())
+    monkeypatch.setattr(
+        run_benchmark,
+        "_phase_b_retriever_factories",
+        lambda: [run_benchmark.PhaseBRetrieverFactory("raw-surface", RawSurfaceRetriever)],
+    )
+    monkeypatch.setattr(run_benchmark, "_phase_b_findings_and_gates", lambda summaries, corpus_document_count: ([], {}))
+    monkeypatch.setattr(run_benchmark, "write_phase_b_reports", lambda payload, output_dir: None)
+
+    payload = run_phase_b_python_full(bloom_path=tmp_path / "bloom.bin", sample_size=1, top_k=1, output_dir=tmp_path / "out")
+
+    assert payload["benchmark"]["document_surface"] == "document.code"
+    assert "normalized_surface" not in payload["benchmark"]
 
 
 def test_phase_b_retriever_factories_are_lazy_and_keep_cpu_rows_before_neural_models() -> None:

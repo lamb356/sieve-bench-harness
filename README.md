@@ -18,7 +18,7 @@ Diagnostic tooling used to validate retriever implementations lives under `bench
 
 Production-grade benchmark harness for public multi-language code retrieval evaluation.
 
-Current status: Phase B v3 implemented; Phase B.5 adds the raw-surface/full-eval CodeSearchNet Python route; canonical TypeScript Phase B v3/B.5 routes are available through a pinned public TypeScript `.ts` code/docstring dataset; Go Phase B v3/B.5 routes use official CoIR/CodeSearchNet Go test qrels; Rust Phase B v3/B.5 routes are shipped as a caveated pinned `.rs` docstring/code-pair eval because no official CodeSearchNet/CoIR/CornStack Rust retrieval qrels were identifiable.
+Current status: Phase B v3 implemented; Phase B.5 adds full-eval CodeSearchNet Python route coverage; canonical TypeScript Phase B v3/B.5 routes are available through a pinned public TypeScript `.ts` code/docstring dataset; Go Phase B v3/B.5 routes use official CoIR/CodeSearchNet Go test qrels; Rust Phase B v3/B.5 routes are shipped as a caveated pinned `.rs` docstring/code-pair eval because no official CodeSearchNet/CoIR/CornStack Rust retrieval qrels were identifiable.
 
 Phase B v3 scope
 - Python on the same CoIR benchmark surface as Phase A/B v1/v2
@@ -30,20 +30,20 @@ Phase B v3 scope
 - Performance metrics: p50/p95/p99 latency, throughput, index build time, per-retriever memory footprint
 - CPU memory is reported as isolated subprocess delta RSS; CUDA retrievers keep `torch.cuda.max_memory_allocated()` measurement
 - Full report outputs: JSON, markdown hero + extended tables, CSV audit data, optional HTML view
-- Normalized-code benchmark surface: all Phase B v3 retrievers index `document.index_text`
+- Raw-code benchmark surface: all Phase B v3/B.5 retrievers index `document.code`; loader `document.index_text` remains metadata/cache material only.
 
 Phase B.5 scope
 - Python CodeSearchNet full eval distribution using the same retriever set, metrics, and memory methodology as Phase B v3
 - Canonical TypeScript full eval distribution using the same retriever set, metrics, and memory methodology as Phase B v3/B.5 Python
 - Go full eval distribution using official CoIR/CodeSearchNet Go test qrels with the same retriever set, metrics, and memory methodology
 - Rust full eval distribution using pinned Rust `.rs` docstring/code pairs with explicit methodology caveat because official Rust retrieval qrels were not identifiable
-- Raw-surface query distribution: mixed semantic-hard and raw/literal queries rather than the Phase B v3 hard-slice interpretation
+- Full-eval query distribution: mixed semantic-hard and raw/literal queries rather than the Phase B v3 hard-slice interpretation
 - Separate Python output directory: `bench-results/phase-b5-python-full/`
 - Separate TypeScript output directory: `bench-results/phase-b5-typescript-full/`
 - Separate Go output directory: `bench-results/phase-b5-go-full/`
 - Separate Rust output directory: `bench-results/phase-b5-rust-full/`
 - Separate ripgrep index caches so Phase B v3 artifacts remain reproducible
-- Phase B.5 records raw-surface findings as observational and does not apply Phase B v3 semantic-hard ordering gates
+- Phase B.5 records full-eval findings as observational and does not apply Phase B v3 semantic-hard ordering gates
 
 Phase B v1/v2/v3/B.5 audit trail
 - Phase B v1 artifacts remain at `bench-results/phase-b-python-full/` when present locally.
@@ -208,7 +208,7 @@ Retriever notes
 - LateOn-Code pin: `lightonai/LateOn-Code@734b659a57935ef50562d79581c3ff1f8d825c93`.
 - CodeBERT and UniXcoder use 512-token max context, document head+tail truncation, query head-only truncation, mean pooling, and cosine similarity.
 - LateOn retrievers use PyLate multi-vector embeddings and brute-force MaxSim scoring in Phase B v3.
-- TypeScript retriever config is intentionally minimal: ripgrep is text-agnostic; BM25 uses the same punctuation-aware normalized-code tokenization; UniXcoder and LateOn-Code variants use their multilingual/code pretrained encoders without a language flag; CodeBERT remains a null baseline; SIEVE is labeled Phase 1 weights pending until real trained ONNX exports are supplied.
+- TypeScript retriever config is intentionally minimal: ripgrep is text-agnostic; BM25 uses the same punctuation-aware raw-code tokenization; UniXcoder and LateOn-Code variants use their multilingual/code pretrained encoders without a language flag; CodeBERT remains a null baseline; SIEVE is labeled Phase 1 weights pending until real trained ONNX exports are supplied.
 - Go retriever config follows the TypeScript/Python baseline set over official CoIR/CodeSearchNet Go qrels; UniXcoder is expected to be meaningful on Go because Go is one of its trained CodeSearchNet languages.
 - Rust retriever config follows the same baseline set but is caveated: UniXcoder and LateOn may degrade because the public Rust route is not official CodeSearchNet/CoIR retrieval-qrels coverage, and SIEVE remains Phase 1 weights pending.
 
