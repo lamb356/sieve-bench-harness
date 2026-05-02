@@ -8,6 +8,7 @@ import pytest
 from bench.loaders.base import CodeDocument
 from bench.retrievers import RETRIEVER_REPORT_METADATA
 from bench.retrievers import codebert as codebert_module
+from bench.retrievers.bge_small import BgeSmallRetriever
 from bench.retrievers.codebert import CodeBERTRetriever
 from bench.retrievers.unixcoder import UniXcoderRetriever
 
@@ -116,6 +117,42 @@ def test_transformer_retrievers_encode_raw_code_not_index_text(
     assert all("rawonlysignal rawonlysignal" not in text for text in backend.encoded_batches[0])
 
 
+def test_bge_small_retriever_encodes_raw_code_not_index_text(tmp_path) -> None:
+    backend = KeywordEmbeddingBackend()
+    retriever = BgeSmallRetriever(model_cache_dir=tmp_path / "models", embedding_backend=backend)
+    corpus = [
+        CodeDocument(
+            document_id="raw-doc",
+            path="python/raw.py",
+            code="def parse_http_request(raw_request):\n    return raw_request.headers\n",
+            language="python",
+            index_text="metadata decoy only",
+        ),
+        CodeDocument(
+            document_id="index-text-decoy",
+            path="python/decoy.py",
+            code="def unrelated():\n    return 'noise'\n",
+            language="python",
+            index_text="parse http request headers parse http request headers",
+        ),
+    ]
+
+    retriever.index(corpus)
+
+    assert backend.encoded_batches[0] == [document.code for document in corpus]
+    assert all("parse http request headers parse" not in text for text in backend.encoded_batches[0])
+    assert retriever.search("parse http request headers", k=1)[0].document_id == "raw-doc"
+
+
+def test_bge_small_is_annotated_as_general_text_embedding_baseline() -> None:
+    metadata = RETRIEVER_REPORT_METADATA["bge-small"]
+
+    assert metadata.role == "general_text_embedding_baseline"
+    assert metadata.table == "extended"
+    assert metadata.params == "33M"
+    assert "not code-specific" in metadata.role_label
+
+
 def test_codebert_is_annotated_as_null_baseline_for_extended_table() -> None:
     metadata = RETRIEVER_REPORT_METADATA["codebert"]
 
@@ -123,5 +160,6 @@ def test_codebert_is_annotated_as_null_baseline_for_extended_table() -> None:
     assert metadata.table == "extended"
     assert metadata.display_name == "CodeBERT (pretrained features only)"
     assert "NULL BASELINE" in metadata.role_label
+
     assert "NULL BASELINE" in (codebert_module.__doc__ or "")
     assert "Do not cite this row as a CodeBERT-vs-SIEVE comparison" in (codebert_module.__doc__ or "")

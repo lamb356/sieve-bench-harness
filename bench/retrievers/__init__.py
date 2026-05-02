@@ -57,6 +57,14 @@ RETRIEVER_REPORT_METADATA: dict[str, RetrieverReportMetadata] = {
         display_name="SIEVE",
         order=50,
     ),
+    "bge-small": RetrieverReportMetadata(
+        table="extended",
+        role="general_text_embedding_baseline",
+        role_label="General text embedding baseline; not code-specific retrieval training",
+        params="33M",
+        display_name="bge-small-en-v1.5",
+        order=105,
+    ),
     "codebert": RetrieverReportMetadata(
         table="extended",
         role="null_baseline",
