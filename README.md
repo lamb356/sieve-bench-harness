@@ -22,7 +22,7 @@ Current status: Phase B v3 implemented; Phase B.5 adds full-eval CodeSearchNet P
 
 Phase B v3 scope
 - Python on the same CoIR benchmark surface as Phase A/B v1/v2
-- Canonical TypeScript route on `Shuu12121/typescript-treesitter-dedupe-filtered-datasetsV2` when invoked via `phase-b-typescript-full` / `make bench-typescript-b3`; no semantic-hard TypeScript split was identifiable, so this route preserves Phase B v3 retriever methodology over the public TypeScript test split
+- Canonical TypeScript route on `Shuu12121/typescript-treesitter-dedupe-filtered-datasetsV2` when invoked via `phase-b-typescript-full` / `make bench-typescript-b3`; no upstream CodeSearchNet/CoIR-style semantic-hard TypeScript split was identifiable, so this route preserves Phase B v3 retriever methodology over the public TypeScript test split. The repo-local generated semantic-hard subset lives under `bench/data/semantic-hard-v1/`.
 - Go route on official CoIR/CodeSearchNet Go test qrels when invoked via `phase-b-go-full` / `make bench-go-b3`
 - Rust route on `Shuu12121/rust-treesitter-dedupe-filtered-datasetsV2` when invoked via `phase-b-rust-full` / `make bench-rust-b3`; this is a caveated docstring-pair eval, not official retrieval-qrels coverage
 - Seven retrievers: ripgrep, BM25, CodeBERT null baseline, UniXcoder with `<encoder-only>` formatting, LateOn-Code-edge, LateOn-Code, SIEVE
@@ -91,6 +91,12 @@ Pinned public benchmark provenance
 - Rust eval surface: test split only, 8,868 non-empty Rust `.rs` docstring/code query-document pairs; this is a caveated constructed eval because CodeSearchNet/CoIR/CornStack Rust retrieval qrels were not found
 - Rust dataset license/provenance: Hugging Face card license `apache-2.0`; row-level licenses are preserved in metadata and reports
 
+Canonical semantic-hard-v1 manifests
+- Source of truth: `bench/data/semantic-hard-v1/{python,typescript,go,rust}.jsonl`.
+- Each file contains exactly 300 full-eval rows where the harness `RipgrepRetriever` missed the paired code document in the top 5 (`ripgrep.recall@5 == 0.0`) against the full-language eval corpus.
+- The schema records dataset/source provenance, query/document identifiers, query/code SHA-256 hashes, ripgrep metrics, and `provenance.source_metadata`.
+- `bench.loaders.semantic_hard.load_semantic_hard_benchmark()` validates language, hashes, duplicate query/document/code/query identities, minimum row count, provenance fields, and corpus/query drift before constructing a `LoadedBenchmark`.
+
 Audit note on licensing/provenance
 - The Hugging Face card for `CoIR-Retrieval/CodeSearchNet` does not currently expose strong license metadata in `card_data`.
 - This is documented explicitly rather than treated as a route blocker for Phase A.
@@ -138,7 +144,7 @@ Phase B v3 TypeScript benchmark target
 ```bash
 make bench-typescript-b3
 ```
-The route uses the pinned `Shuu12121/typescript-treesitter-dedupe-filtered-datasetsV2` test split because a semantic-hard TypeScript split with CodeSearchNet/CoIR-style qrels was not identifiable. The Make target uses a deterministic 100-query sample from the 11,579-query canonical TypeScript test split and bounds the corpus to sampled positives plus deterministic negatives for practical validation; omit `--corpus-sample-size` for a full-corpus run.
+The route uses the pinned `Shuu12121/typescript-treesitter-dedupe-filtered-datasetsV2` test split because no upstream CodeSearchNet/CoIR-style semantic-hard TypeScript qrel split was identifiable. The Make target uses a deterministic 100-query sample from the 11,579-query canonical TypeScript test split and bounds the corpus to sampled positives plus deterministic negatives for practical validation; omit `--corpus-sample-size` for a full-corpus run. For the generated repo-local semantic-hard subset, see `bench/data/semantic-hard-v1/typescript.jsonl`.
 
 Phase B.5 TypeScript full-eval benchmark target
 ```bash
