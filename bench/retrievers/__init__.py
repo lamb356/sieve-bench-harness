@@ -57,6 +57,14 @@ RETRIEVER_REPORT_METADATA: dict[str, RetrieverReportMetadata] = {
         display_name="SIEVE",
         order=50,
     ),
+    "custom-encoder": RetrieverReportMetadata(
+        table="hero",
+        role="our_model",
+        role_label="Our model",
+        params="4.2M",
+        display_name="Custom encoder",
+        order=55,
+    ),
     "bge-small": RetrieverReportMetadata(
         table="extended",
         role="general_text_embedding_baseline",
