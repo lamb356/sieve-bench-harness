@@ -53,7 +53,8 @@ if args[0] == "search":
             "byte_range": [0, 32],
             "snippet": f"def helper_{idx}():",
             "score": 1.0 / float(len(rows) + 1),
-            "layer": "hot-vector",
+            "layer": "lexical-bm25",
+            "retrieval_sources": ["lexical-bm25", "hot-vector"],
         })
         if len(rows) >= top:
             break
@@ -76,7 +77,8 @@ def test_sieve_retriever_uses_cli_and_maps_results(tmp_path: Path) -> None:
     assert [result.document_id for result in results[:2]] == ["doc-7", "doc-0"]
     assert results[0].path == "python/doc_7.py"
     assert results[0].metadata["sieve_path"] == "docs/000007_doc_7.py"
-    assert results[0].metadata["layer"] == "hot-vector"
+    assert results[0].metadata["layer"] == "lexical-bm25"
+    assert results[0].metadata["retrieval_sources"] == ["lexical-bm25", "hot-vector"]
     assert retriever.latency_ms()["p50"] > 0.0
     assert retriever.embedding_metadata()["interface"] == "sieve-cli-subprocess"
 

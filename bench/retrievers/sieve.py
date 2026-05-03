@@ -101,6 +101,8 @@ class SieveRetriever:
             if document is None:
                 continue
             score = float(item.get("score", 0.0))
+            retrieval_sources = _retrieval_sources_from_item(item)
+            layer = item.get("layer") or (retrieval_sources[0] if retrieval_sources else None)
             results.append(
                 SearchResult(
                     document_id=document.document_id,
@@ -109,7 +111,8 @@ class SieveRetriever:
                     code=document.code,
                     metadata={
                         "sieve_path": relative_path,
-                        "layer": item.get("layer"),
+                        "layer": layer,
+                        "retrieval_sources": retrieval_sources,
                         "line": item.get("line"),
                         "chunk_id": item.get("chunk_id"),
                         "byte_range": item.get("byte_range"),
@@ -227,6 +230,18 @@ def _language_suffix(language: str) -> str:
 def _safe_stem(value: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("._")
     return cleaned[:80] or "document"
+
+
+def _retrieval_sources_from_item(item: Mapping[str, Any]) -> list[str]:
+    raw_sources = item.get("retrieval_sources")
+    if isinstance(raw_sources, list):
+        sources = [source for source in raw_sources if isinstance(source, str) and source]
+        if sources:
+            return sources
+    layer = item.get("layer")
+    if isinstance(layer, str) and layer:
+        return [layer]
+    return []
 
 
 def _children_maxrss_mb() -> float:
