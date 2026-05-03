@@ -17,7 +17,6 @@ from bench.loaders.base import CodeDocument
 from bench.metrics.performance import summarize_latency
 from bench.retrievers.base import SearchResult
 
-DEFAULT_CUSTOM_ENCODER_CHECKPOINT_PATH = Path("/home/burba/checkpoints/phase1-autosave-116.38.pt")
 CUSTOM_ENCODER_CHECKPOINT_ENV = "CUSTOM_ENCODER_CHECKPOINT_PATH"
 CUSTOM_ENCODER_MODEL_ID = "sieve/custom-byte-encoder-phase1"
 CUSTOM_ENCODER_QUERY_SEQ = 256
@@ -37,7 +36,13 @@ MAX_NGRAM = max(NGRAM_RANGE)
 
 
 def _checkpoint_path_from_env() -> Path:
-    return Path(os.environ.get(CUSTOM_ENCODER_CHECKPOINT_ENV, str(DEFAULT_CUSTOM_ENCODER_CHECKPOINT_PATH))).expanduser()
+    raw_path = os.environ.get(CUSTOM_ENCODER_CHECKPOINT_ENV)
+    if raw_path is None or not raw_path.strip():
+        raise RuntimeError(
+            f"Custom encoder retriever is experimental and requires {CUSTOM_ENCODER_CHECKPOINT_ENV}; "
+            "set it to a checkpoint path to enable this retriever."
+        )
+    return Path(raw_path).expanduser()
 
 
 def _sha256_file(path: Path) -> str:
@@ -513,7 +518,12 @@ class CustomEncoderRetriever:
         score_chunk_size: int = 512,
         device: str | torch.device | None = None,
     ) -> None:
-        self.checkpoint_path = Path(checkpoint_path) if checkpoint_path is not None else _checkpoint_path_from_env()
+        self.checkpoint_path = Path(checkpoint_path) if checkpoint_path is not None else None
+        if self.checkpoint_path is None and encoder_backend is None:
+            self.checkpoint_path = _checkpoint_path_from_env()
+        elif self.checkpoint_path is None:
+            backend_checkpoint_path = getattr(encoder_backend, "checkpoint_path", None)
+            self.checkpoint_path = Path(backend_checkpoint_path) if backend_checkpoint_path is not None else None
         self.batch_size = int(batch_size)
         self.score_chunk_size = int(score_chunk_size)
         self.encoder_backend = encoder_backend or CustomEncoderBackend(
@@ -532,7 +542,7 @@ class CustomEncoderRetriever:
         else:
             metadata = {
                 "model_id": str(getattr(self.encoder_backend, "model_id", CUSTOM_ENCODER_MODEL_ID)),
-                "checkpoint_path": str(getattr(self.encoder_backend, "checkpoint_path", self.checkpoint_path)),
+                "checkpoint_path": str(getattr(self.encoder_backend, "checkpoint_path", self.checkpoint_path or "unknown")),
                 "checkpoint_sha256": str(getattr(self.encoder_backend, "checkpoint_sha256", "unknown")),
                 "param_count": int(getattr(self.encoder_backend, "param_count", 0)),
                 "query_seq": int(getattr(self.encoder_backend, "query_seq", CUSTOM_ENCODER_QUERY_SEQ)),

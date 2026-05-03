@@ -199,9 +199,9 @@ def render_phase_b_hero_table(payload: dict[str, Any]) -> str:
         f"Corpus documents: {summary['corpus_document_count']}  ",
         f"Contamination rejected: {summary['contamination_rejected_count']}",
         "",
-        "This benchmark frames SIEVE as a local-first, small-model code retrieval system for agent deployment. The hero table compares deployment-relevant competitors on the size/latency/memory Pareto frontier rather than treating unbounded model size as a fair baseline.",
+        "This benchmark frames SIEVE as a local-first code retrieval system for agent deployment. The hero table keeps the default dense backend with deployment-relevant lexical and neural comparators on the quality/latency/memory Pareto frontier rather than treating unbounded model size as a fair baseline.",
         "",
-        "## Hero Table: Size-Matched Competitors",
+        "## Hero Table: Default Dense Backend and Deployment Comparators",
         "",
         "| Retriever | Role | Params | Recall@1 | Recall@5 | Recall@10 | MRR@10 | NDCG@10 | p50 latency | p95 latency | Throughput | Memory |",
         "|---|---|---:|---|---|---|---|---|---|---|---|---|",
@@ -212,7 +212,7 @@ def render_phase_b_hero_table(payload: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "Quality claims for SIEVE should be read from the hero table. The extended rows below are reference points only, not apples-to-apples competitors against SIEVE's 4.2M-parameter deployment class.",
+            "Quality claims for the default dense layer should be read from the hero table. The extended rows below are reference points only, including experimental or scale-mismatched retrievers.",
             "",
             "Note: LateOn's multi-vector MaxSim brute-force scoring is inherently slower than single-vector cosine; production deployment would use PLAID indexing, which is intentionally not benchmarked in Phase B v3.",
             "",

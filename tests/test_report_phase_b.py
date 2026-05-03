@@ -46,6 +46,7 @@ def test_phase_b_report_writes_hero_and_extended_tables_json_csv_and_findings(tm
             _summary("lateon-code-edge", 0.75, display_name="LateOn-Code-edge"),
             _summary("lateon-code", 0.85, display_name="LateOn-Code"),
             _summary("sieve", 0.02, display_name="SIEVE"),
+            _summary("bge-small", 0.72, display_name="bge-small-en-v1.5"),
         ],
         "rows": [
             {"retriever": "ripgrep", "query_id": "q1", "recall@5": 1.0, "mrr@10": 1.0, "ndcg@10": 1.0},
@@ -56,10 +57,11 @@ def test_phase_b_report_writes_hero_and_extended_tables_json_csv_and_findings(tm
     write_phase_b_reports(payload, output_dir=tmp_path)
 
     table = (tmp_path / "benchmark-table.md").read_text(encoding="utf-8")
-    assert "## Hero Table: Size-Matched Competitors" in table
+    assert "## Hero Table: Default Dense Backend and Deployment Comparators" in table
     assert "| Retriever | Role | Params | Recall@1 | Recall@5 | Recall@10 | MRR@10 | NDCG@10 | p50 latency | p95 latency | Throughput | Memory |" in table
     assert "| BM25 | Classical IR baseline | — | 0.100 | 0.500 | 0.550 | 0.200 | 0.250 | 3.00 ms | 9.00 ms | 20.00 q/s | 64.00 MB |" in table
     assert "| LateOn-Code-edge | Size-matched retrieval-trained (primary) | 17M |" in table
+    assert "| bge-small-en-v1.5 | Default dense backend | 33M | 0.100 | 0.720 | 0.770 | 0.200 | 0.250 | 3.00 ms | 9.00 ms | 20.00 q/s | 64.00 MB |" in table
     assert "## Extended Table: Reference Baselines" in table
     assert "| Retriever | Role | Params | Recall@1 | Recall@5 | Recall@10 | MRR@10 | NDCG@10 | p50 latency | p95 latency | Throughput | Memory |" in table
     assert "| CodeBERT (pretrained features only) | NULL BASELINE: off-the-shelf encoder without retrieval fine-tuning | 125M | 0.100 | 0.010 | 0.060 | 0.200 | 0.250 | 3.00 ms | 9.00 ms | 20.00 q/s | 64.00 MB |" in table

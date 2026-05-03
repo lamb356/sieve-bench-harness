@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 import torch
 
 from bench.loaders.base import CodeDocument
@@ -113,10 +114,18 @@ def test_fully_masked_documents_score_below_real_negative_matches() -> None:
     assert scores[1].item() == -1.0
 
 
-def test_custom_encoder_is_registered_as_our_model_hero_row() -> None:
+def test_custom_encoder_is_registered_as_experimental_env_gated_row() -> None:
     metadata = RETRIEVER_REPORT_METADATA["custom-encoder"]
 
-    assert metadata.table == "hero"
-    assert metadata.role == "our_model"
+    assert metadata.table == "extended"
+    assert metadata.role == "experimental_env_gated"
     assert metadata.params == "4.2M"
     assert metadata.display_name == "Custom encoder"
+    assert "CUSTOM_ENCODER_CHECKPOINT_PATH" in metadata.role_label
+
+
+def test_custom_encoder_checkpoint_load_requires_explicit_env_when_no_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CUSTOM_ENCODER_CHECKPOINT_PATH", raising=False)
+
+    with pytest.raises(RuntimeError, match="CUSTOM_ENCODER_CHECKPOINT_PATH"):
+        CustomEncoderRetriever()

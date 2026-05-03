@@ -144,13 +144,13 @@ def test_bge_small_retriever_encodes_raw_code_not_index_text(tmp_path) -> None:
     assert retriever.search("parse http request headers", k=1)[0].document_id == "raw-doc"
 
 
-def test_bge_small_is_annotated_as_general_text_embedding_baseline() -> None:
+def test_bge_small_is_annotated_as_default_dense_backend() -> None:
     metadata = RETRIEVER_REPORT_METADATA["bge-small"]
 
-    assert metadata.role == "general_text_embedding_baseline"
-    assert metadata.table == "extended"
+    assert metadata.role == "default_dense_backend"
+    assert metadata.table == "hero"
     assert metadata.params == "33M"
-    assert "not code-specific" in metadata.role_label
+    assert "Default dense backend" in metadata.role_label
 
 
 def test_codebert_is_annotated_as_null_baseline_for_extended_table() -> None:

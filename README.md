@@ -4,13 +4,15 @@
 
 SIEVE is designed as a local-first, small-model code retrieval system for real AI coding-agent deployment: fast local search, consumer-GPU/CPU practicality, a tiny binary/parameter footprint, and sub-millisecond-class query latency for the eventual SIEVE implementation. The benchmark therefore evaluates the quality × latency × memory × size Pareto frontier instead of treating raw Recall@5 against arbitrarily large models as the only objective.
 
-The hero table is intentionally size-matched. LateOn-Code-edge is the primary retrieval-trained competitor because it is a 17M-parameter PyLate/ColBERT model, close enough to SIEVE's 4.2M-parameter class to make a deployment-relevant comparison. Larger systems can be useful references, but they are not the pitch surface for a local-first agent retriever.
+The hero table keeps the default dense backend visible beside deployment-relevant lexical and neural comparators. LateOn-Code-edge remains the primary retrieval-trained comparator because it is a 17M-parameter PyLate/ColBERT model near the small local-retriever class; larger systems can be useful references, but they are not the pitch surface for a local-first agent retriever.
 
 LateOn-Code-edge, LateOn-Code, and SIEVE share a training-recipe family: CoRNStack-style pretraining plus NV-Retriever-style hard-negative mining. Comparisons against the LateOn family should therefore be read as architecture-to-architecture comparisons under a related recipe family, not as independent-baseline claims.
 
-The extended table exists for reference only. CodeBERT is a NULL BASELINE: base `microsoft/codebert-base` features without retrieval fine-tuning, scored as an independent dual encoder with cosine similarity, and expected to stay near random. LateOn-Code is a 149M-parameter SOTA-at-larger-scale ceiling reference and is not a fair apples-to-apples competitor for SIEVE's 4.2M-parameter deployment class.
+The extended table exists for reference only. CodeBERT is a NULL BASELINE: base `microsoft/codebert-base` features without retrieval fine-tuning, scored as an independent dual encoder with cosine similarity, and expected to stay near random. LateOn-Code is a 149M-parameter SOTA-at-larger-scale ceiling reference and is not a fair apples-to-apples competitor for the local-first deployment class. The custom encoder row is experimental and only active when explicitly pointed at a checkpoint.
 
-Benchmark quality claims rely on the hero table, not cherry-picked rows from the extended table. The Role column exists to make each row's purpose explicit for reviewers.
+Default dense backend: bge-small-en-v1.5. Custom encoder retriever available as experimental option behind CUSTOM_ENCODER_CHECKPOINT_PATH for research and v2 retrain comparisons.
+
+Benchmark quality claims for the default dense layer rely on the hero table, not cherry-picked rows from the extended table. The Role column exists to make each row's purpose explicit for reviewers.
 
 LateOn-Code-edge and LateOn-Code are evaluated in Phase B v3 with brute-force multi-vector MaxSim over the Phase B corpus. This is intentionally simple and auditable at this corpus size, but it is much slower than single-vector cosine; production LateOn deployments would use PLAID/FastPLAID indexing, which is not benchmarked here.
 
@@ -25,7 +27,7 @@ Phase B v3 scope
 - Canonical TypeScript route on `Shuu12121/typescript-treesitter-dedupe-filtered-datasetsV2` when invoked via `phase-b-typescript-full` / `make bench-typescript-b3`; no upstream CodeSearchNet/CoIR-style semantic-hard TypeScript split was identifiable, so this route preserves Phase B v3 retriever methodology over the public TypeScript test split. The repo-local generated semantic-hard subset lives under `bench/data/semantic-hard-v1/`.
 - Go route on official CoIR/CodeSearchNet Go test qrels when invoked via `phase-b-go-full` / `make bench-go-b3`
 - Rust route on `Shuu12121/rust-treesitter-dedupe-filtered-datasetsV2` when invoked via `phase-b-rust-full` / `make bench-rust-b3`; this is a caveated docstring-pair eval, not official retrieval-qrels coverage
-- Seven retrievers: ripgrep, BM25, CodeBERT null baseline, UniXcoder with `<encoder-only>` formatting, LateOn-Code-edge, LateOn-Code, SIEVE
+- Default Phase B v3/B.5 routes: ripgrep, BM25, SIEVE, bge-small-en-v1.5, CodeBERT null baseline, UniXcoder with `<encoder-only>` formatting, LateOn-Code-edge, and LateOn-Code. `bge-small-en-v1.5` is the default dense backend; `custom-encoder` is an experimental checkpoint-gated row and is not part of default routes.
 - Retrieval metrics: Recall@1/5/10, MRR@10, NDCG@10
 - Performance metrics: p50/p95/p99 latency, throughput, index build time, per-retriever memory footprint
 - CPU memory is reported as isolated subprocess delta RSS; CUDA retrievers keep `torch.cuda.max_memory_allocated()` measurement
@@ -212,6 +214,8 @@ Retriever notes
 - UniXcoder pin: `microsoft/unixcoder-base@5604afdc964f6c53782a6813140ade5216b99006`; Phase B v3 keeps the Phase B v2 `<encoder-only>` query/document wrapper.
 - LateOn-Code-edge pin: `lightonai/LateOn-Code-edge@07ef20f406c86badca122464808f4cac2f6e4b25`.
 - LateOn-Code pin: `lightonai/LateOn-Code@734b659a57935ef50562d79581c3ff1f8d825c93`.
+- bge-small pin: `BAAI/bge-small-en-v1.5@5c38ec7c405ec4b44b94cc5a9bb96e735b38267a`; this is the default dense backend for v1 reporting.
+- Custom encoder: experimental 4.2M checkpoint-backed retriever; set `CUSTOM_ENCODER_CHECKPOINT_PATH` to opt into research/v2 retrain comparisons. When the env var is unset, default benchmark/report paths should skip the custom encoder instead of treating it as production default.
 - CodeBERT and UniXcoder use 512-token max context, document head+tail truncation, query head-only truncation, mean pooling, and cosine similarity.
 - LateOn retrievers use PyLate multi-vector embeddings and brute-force MaxSim scoring in Phase B v3.
 - TypeScript retriever config is intentionally minimal: ripgrep is text-agnostic; BM25 uses the same punctuation-aware raw-code tokenization; UniXcoder and LateOn-Code variants use their multilingual/code pretrained encoders without a language flag; CodeBERT remains a null baseline; SIEVE is labeled Phase 1 weights pending until real trained ONNX exports are supplied.

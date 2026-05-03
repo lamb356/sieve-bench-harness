@@ -63,6 +63,7 @@ from bench.metrics.performance import measure_cpu_retriever_delta_rss, measure_t
 from bench.metrics.retrieval import aggregate_retrieval_metrics, compute_query_metrics
 from bench.report.generate_report import write_hero_table, write_phase_b_reports, write_results_json
 from bench.retrievers import RETRIEVER_REPORT_METADATA
+from bench.retrievers.bge_small import BgeSmallRetriever
 from bench.retrievers.bm25 import BM25Retriever
 from bench.retrievers.codebert import CodeBERTRetriever
 from bench.retrievers.lateon_code import LateOnCodeRetriever
@@ -304,6 +305,7 @@ def _phase_b_retriever_factories() -> list[PhaseBRetrieverFactory]:
         PhaseBRetrieverFactory("ripgrep", _build_phase_b_ripgrep, run_in_subprocess=True),
         PhaseBRetrieverFactory("bm25", BM25Retriever, run_in_subprocess=True),
         PhaseBRetrieverFactory("sieve", SieveRetriever, run_in_subprocess=True),
+        PhaseBRetrieverFactory("bge-small", BgeSmallRetriever),
         PhaseBRetrieverFactory("codebert", CodeBERTRetriever),
         PhaseBRetrieverFactory("unixcoder", UniXcoderRetriever),
         PhaseBRetrieverFactory("lateon-code-edge", LateOnCodeEdgeRetriever),
@@ -316,6 +318,7 @@ def _phase_b5_retriever_factories() -> list[PhaseBRetrieverFactory]:
         PhaseBRetrieverFactory("ripgrep", _build_phase_b5_ripgrep, run_in_subprocess=True),
         PhaseBRetrieverFactory("bm25", BM25Retriever, run_in_subprocess=True),
         PhaseBRetrieverFactory("sieve", SieveRetriever, run_in_subprocess=True),
+        PhaseBRetrieverFactory("bge-small", BgeSmallRetriever),
         PhaseBRetrieverFactory("codebert", CodeBERTRetriever),
         PhaseBRetrieverFactory("unixcoder", UniXcoderRetriever),
         PhaseBRetrieverFactory("lateon-code-edge", LateOnCodeEdgeRetriever),
@@ -332,6 +335,7 @@ def _phase_b_typescript_retriever_factories() -> list[PhaseBRetrieverFactory]:
         PhaseBRetrieverFactory("ripgrep", _build_phase_b_typescript_ripgrep, run_in_subprocess=True),
         PhaseBRetrieverFactory("bm25", BM25Retriever, run_in_subprocess=True),
         PhaseBRetrieverFactory("sieve", _build_typescript_sieve, run_in_subprocess=True),
+        PhaseBRetrieverFactory("bge-small", BgeSmallRetriever),
         PhaseBRetrieverFactory("codebert", CodeBERTRetriever),
         PhaseBRetrieverFactory("unixcoder", UniXcoderRetriever),
         PhaseBRetrieverFactory("lateon-code-edge", LateOnCodeEdgeRetriever),
@@ -344,6 +348,7 @@ def _phase_b5_typescript_retriever_factories() -> list[PhaseBRetrieverFactory]:
         PhaseBRetrieverFactory("ripgrep", _build_phase_b5_typescript_ripgrep, run_in_subprocess=True),
         PhaseBRetrieverFactory("bm25", BM25Retriever, run_in_subprocess=True),
         PhaseBRetrieverFactory("sieve", _build_typescript_sieve, run_in_subprocess=True),
+        PhaseBRetrieverFactory("bge-small", BgeSmallRetriever),
         PhaseBRetrieverFactory("codebert", CodeBERTRetriever),
         PhaseBRetrieverFactory("unixcoder", UniXcoderRetriever),
         PhaseBRetrieverFactory("lateon-code-edge", LateOnCodeEdgeRetriever),
@@ -356,6 +361,7 @@ def _phase_b_go_retriever_factories() -> list[PhaseBRetrieverFactory]:
         PhaseBRetrieverFactory("ripgrep", _build_phase_b_go_ripgrep, run_in_subprocess=True),
         PhaseBRetrieverFactory("bm25", BM25Retriever, run_in_subprocess=True),
         PhaseBRetrieverFactory("sieve", _build_go_sieve, run_in_subprocess=True),
+        PhaseBRetrieverFactory("bge-small", BgeSmallRetriever),
         PhaseBRetrieverFactory("codebert", CodeBERTRetriever),
         PhaseBRetrieverFactory("unixcoder", UniXcoderRetriever),
         PhaseBRetrieverFactory("lateon-code-edge", LateOnCodeEdgeRetriever),
@@ -368,6 +374,7 @@ def _phase_b5_go_retriever_factories() -> list[PhaseBRetrieverFactory]:
         PhaseBRetrieverFactory("ripgrep", _build_phase_b5_go_ripgrep, run_in_subprocess=True),
         PhaseBRetrieverFactory("bm25", BM25Retriever, run_in_subprocess=True),
         PhaseBRetrieverFactory("sieve", _build_go_sieve, run_in_subprocess=True),
+        PhaseBRetrieverFactory("bge-small", BgeSmallRetriever),
         PhaseBRetrieverFactory("codebert", CodeBERTRetriever),
         PhaseBRetrieverFactory("unixcoder", UniXcoderRetriever),
         PhaseBRetrieverFactory("lateon-code-edge", LateOnCodeEdgeRetriever),
@@ -380,6 +387,7 @@ def _phase_b_rust_retriever_factories() -> list[PhaseBRetrieverFactory]:
         PhaseBRetrieverFactory("ripgrep", _build_phase_b_rust_ripgrep, run_in_subprocess=True),
         PhaseBRetrieverFactory("bm25", BM25Retriever, run_in_subprocess=True),
         PhaseBRetrieverFactory("sieve", _build_rust_sieve, run_in_subprocess=True),
+        PhaseBRetrieverFactory("bge-small", BgeSmallRetriever),
         PhaseBRetrieverFactory("codebert", CodeBERTRetriever),
         PhaseBRetrieverFactory("unixcoder", UniXcoderRetriever),
         PhaseBRetrieverFactory("lateon-code-edge", LateOnCodeEdgeRetriever),
@@ -392,6 +400,7 @@ def _phase_b5_rust_retriever_factories() -> list[PhaseBRetrieverFactory]:
         PhaseBRetrieverFactory("ripgrep", _build_phase_b5_rust_ripgrep, run_in_subprocess=True),
         PhaseBRetrieverFactory("bm25", BM25Retriever, run_in_subprocess=True),
         PhaseBRetrieverFactory("sieve", _build_rust_sieve, run_in_subprocess=True),
+        PhaseBRetrieverFactory("bge-small", BgeSmallRetriever),
         PhaseBRetrieverFactory("codebert", CodeBERTRetriever),
         PhaseBRetrieverFactory("unixcoder", UniXcoderRetriever),
         PhaseBRetrieverFactory("lateon-code-edge", LateOnCodeEdgeRetriever),

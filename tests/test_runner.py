@@ -134,10 +134,34 @@ def test_phase_b_retriever_factories_are_lazy_and_keep_cpu_rows_before_neural_mo
 
     assert all(callable(factory) for factory in factories)
     assert [factory.retriever_name for factory in factories[:3]] == ["ripgrep", "bm25", "sieve"]
-    assert [factory.retriever_name for factory in factories[3:]] == ["codebert", "unixcoder", "lateon-code-edge", "lateon-code"]
+    assert [factory.retriever_name for factory in factories[3:]] == [
+        "bge-small",
+        "codebert",
+        "unixcoder",
+        "lateon-code-edge",
+        "lateon-code",
+    ]
     assert all(factory.run_in_subprocess for factory in factories[:3])
     assert not any(factory.run_in_subprocess for factory in factories[3:])
     assert not any(hasattr(factory, "_documents") for factory in factories)
+
+
+def test_default_phase_b_language_factories_include_bge_small_not_custom_encoder() -> None:
+    factory_sets = [
+        _phase_b_retriever_factories(),
+        _phase_b5_retriever_factories(),
+        _phase_b_typescript_retriever_factories(),
+        _phase_b5_typescript_retriever_factories(),
+        _phase_b_go_retriever_factories(),
+        _phase_b5_go_retriever_factories(),
+        _phase_b_rust_retriever_factories(),
+        _phase_b5_rust_retriever_factories(),
+    ]
+
+    for factories in factory_sets:
+        names = [factory.retriever_name for factory in factories]
+        assert "bge-small" in names
+        assert "custom-encoder" not in names
 
 
 def test_phase_b5_uses_same_retriever_set_as_b3() -> None:
