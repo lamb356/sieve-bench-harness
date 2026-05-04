@@ -23,7 +23,6 @@ Default reporting distinguishes:
 - SIEVE CLI retriever
 - default dense backend: bge-small-en-v1.5
 - diagnostic/null baselines where configured: CodeBERT, UniXcoder
-- larger/reference retrievers where configured: LateOn-Code-edge, LateOn-Code
 
 ## Run tests
 
